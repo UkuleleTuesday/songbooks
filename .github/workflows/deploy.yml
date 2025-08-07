@@ -28,6 +28,8 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    env:
+      GCS_BUCKET: ukulele-tuesday-songbooks
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -40,8 +42,6 @@ jobs:
 
       - name: Generate website
         run: uv run main.py
-        env:
-          GCS_BUCKET: ${{ secrets.GCS_BUCKET }}
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
