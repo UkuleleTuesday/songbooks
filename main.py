@@ -18,15 +18,27 @@ def list_pdf_blobs(bucket_name):
     blobs = client.list_blobs(bucket)
     return sorted([blob for blob in blobs if blob.name.lower().endswith('.pdf')], key=lambda b: b.name.lower())
 
-def generate_preview(blob, preview_path):
-    """Downloads a PDF blob and saves the first page as a PNG image."""
-    print(f"  Generating preview for {blob.name}...")
+def process_pdf_blob(blob, preview_path):
+    """
+    Downloads a PDF blob, saves the first page as a PNG image,
+    and returns its metadata.
+    """
+    print(f"  Processing {blob.name}...")
     pdf_data = blob.download_as_bytes()
     pdf_document = fitz.open(stream=pdf_data, filetype="pdf")
+
+    # Generate preview image
     if len(pdf_document) > 0:
         first_page = pdf_document.load_page(0)
         pix = first_page.get_pixmap(dpi=150)
         pix.save(preview_path)
+
+    # Extract metadata, fallback to filename for title
+    metadata = pdf_document.metadata
+    title = metadata.get('title') or blob.name.replace('.pdf', '')
+    subject = metadata.get('subject', '') # Default to empty string if no subject
+
+    return {'title': title, 'subject': subject}
 
 def render_index(file_list):
     """Renders the HTML index page."""
@@ -52,10 +64,11 @@ if __name__ == '__main__':
         preview_filename = f"{sanitized_name}.png"
         preview_path_abs = os.path.join(PREVIEW_DIR, preview_filename)
         
-        generate_preview(blob, preview_path_abs)
+        metadata = process_pdf_blob(blob, preview_path_abs)
 
         songbooks.append({
-            'name': sanitized_name,
+            'title': metadata['title'],
+            'subject': metadata['subject'],
             'url': f'https://storage.googleapis.com/{BUCKET_NAME}/{blob.name}',
             'preview_image': f'previews/{preview_filename}'
         })

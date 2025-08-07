@@ -66,9 +66,19 @@
       object-fit: cover;
       background-color: #f0f0f0;
     }
-    .songbook-item .title {
+    .songbook-item .song-details {
       padding: 0.8em 1em;
+    }
+    .songbook-item .title {
       font-weight: bold;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 0.25em;
+    }
+    .songbook-item .subtitle {
+      font-size: 0.85em;
+      color: #666;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -87,8 +97,13 @@
       {% for file in files %}
         <li class="songbook-item">
           <a href="{{ file.url }}" target="_blank" rel="noopener noreferrer">
-            <img src="{{ file.preview_image }}" alt="Preview of {{ file.name }}">
-            <div class="title">{{ file.name }}</div>
+            <img src="{{ file.preview_image }}" alt="Preview of {{ file.title }}">
+            <div class="song-details">
+              <div class="title" title="{{ file.title }}">{{ file.title }}</div>
+              {% if file.subject %}
+              <div class="subtitle" title="{{ file.subject }}">{{ file.subject }}</div>
+              {% endif %}
+            </div>
           </a>
         </li>
       {% endfor %}
