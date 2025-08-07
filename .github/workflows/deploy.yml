@@ -38,7 +38,7 @@ jobs:
         uses: astral-sh/setup-uv@v1
 
       - name: Install dependencies
-        run: uv sync --system-site-packages
+        run: uv sync
 
       - name: Generate website
         run: uv run main.py
