@@ -2,19 +2,83 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Ukulele Tuesday Songbook</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ukulele Tuesday Songbooks</title>
   <style>
-    body { font-family: sans-serif; max-width: 800px; margin: auto; }
-    ul { list-style: none; padding: 0; }
-    li { margin: .5em 0; }
+    :root {
+      --primary-color: #12a89d;
+      --text-color: #333;
+      --bg-color: #fdfdfd;
+      --container-width: 800px;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      margin: 0;
+      padding: 2em 1em;
+      line-height: 1.6;
+    }
+    .container {
+      max-width: var(--container-width);
+      margin: 0 auto;
+    }
+    header {
+      text-align: center;
+      margin-bottom: 3em;
+    }
+    h1 {
+      font-size: 2.5em;
+      color: var(--text-color);
+      margin-bottom: 0.25em;
+    }
+    h2 {
+      font-size: 1.2em;
+      font-weight: normal;
+      color: #777;
+    }
+    ul {
+      list-style: none;
+      padding: 0;
+    }
+    li {
+      margin-bottom: 1em;
+      border-radius: 5px;
+      transition: background-color 0.2s ease-in-out;
+    }
+    li a {
+      display: block;
+      padding: 1em 1.5em;
+      text-decoration: none;
+      color: var(--primary-color);
+      font-weight: bold;
+      background-color: #fff;
+      border: 1px solid #eee;
+      border-radius: 5px;
+      transition: all 0.2s ease-in-out;
+    }
+    li a:hover {
+      background-color: var(--primary-color);
+      color: #fff;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+    }
   </style>
 </head>
 <body>
-  <h1>Ukulele Tuesday Songbook</h1>
-  <ul>
-  {% for file in files %}
-    <li><a href="{{ file.url }}">{{ file.name }}</a></li>
-  {% endfor %}
-  </ul>
+  <div class="container">
+    <header>
+      <h1>Our Songbooks</h1>
+      <h2>The best of the 80s, 90s, and today, with accurate ukulele chords on every tab.</h2>
+    </header>
+    
+    <main>
+      <ul>
+      {% for file in files %}
+        <li><a href="{{ file.url }}" target="_blank" rel="noopener noreferrer">{{ file.name | replace(".pdf", "") }}</a></li>
+      {% endfor %}
+      </ul>
+    </main>
+  </div>
 </body>
 </html>
