@@ -9,7 +9,7 @@ TEMPLATE_DIR = 'templates'
 TEMPLATE_FILE = 'index.html.j2'
 
 def list_blobs(bucket_name):
-    client = storage.Client()
+    client = storage.Client.create_anonymous_client()
     bucket = client.bucket(bucket_name)
     return sorted([blob.name for blob in client.list_blobs(bucket)], key=str.lower)
 
