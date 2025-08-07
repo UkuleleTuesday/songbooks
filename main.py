@@ -1,5 +1,6 @@
 import os
 import io
+import shutil
 import fitz  # PyMuPDF
 from google.cloud import storage
 from jinja2 import Environment, FileSystemLoader
@@ -51,6 +52,14 @@ def write_output(html):
     os.makedirs(PREVIEW_DIR, exist_ok=True)
     with open(os.path.join(OUTPUT_DIR, 'index.html'), 'w', encoding='utf-8') as f:
         f.write(html)
+    
+    # Copy assets directory
+    assets_src = 'assets'
+    assets_dest = os.path.join(OUTPUT_DIR, 'assets')
+    if os.path.exists(assets_src):
+        if os.path.exists(assets_dest):
+            shutil.rmtree(assets_dest)
+        shutil.copytree(assets_src, assets_dest)
 
 if __name__ == '__main__':
     print(f"Fetching songbooks from GCS bucket: {BUCKET_NAME}")
