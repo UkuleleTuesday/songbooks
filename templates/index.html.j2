@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Ukulele Tuesday Songbook</title>
+  <style>
+    body { font-family: sans-serif; max-width: 800px; margin: auto; }
+    ul { list-style: none; padding: 0; }
+    li { margin: .5em 0; }
+  </style>
+</head>
+<body>
+  <h1>Ukulele Tuesday Songbook</h1>
+  <ul>
+  {% for file in files %}
+    <li><a href="{{ file.url }}">{{ file.name }}</a></li>
+  {% endfor %}
+  </ul>
+</body>
+</html>
