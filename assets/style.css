@@ -156,8 +156,11 @@
       text-align: center;
     }
     .support-cta h3 {
+      font-family: 'Pattaya', sans-serif;
+      font-weight: normal;
+      font-size: 2em;
       margin-top: 0;
-      font-size: 1.2em;
+      margin-bottom: 0.5em;
     }
     .support-cta p {
       margin-bottom: 1.5em;
