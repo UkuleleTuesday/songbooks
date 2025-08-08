@@ -41,11 +41,11 @@ def process_pdf_blob(blob, preview_path):
 
     return {'title': title, 'subject': subject}
 
-def render_index(file_list):
+def render_index(file_list, last_updated=None):
     """Renders the HTML index page."""
     env = Environment(loader=FileSystemLoader(TEMPLATE_DIR), autoescape=True)
     tmpl = env.get_template(TEMPLATE_FILE)
-    return tmpl.render(files=file_list)
+    return tmpl.render(files=file_list, last_updated=last_updated)
 
 def write_output(html):
     """Writes the rendered HTML to the output directory."""
@@ -68,6 +68,11 @@ if __name__ == '__main__':
     
     os.makedirs(PREVIEW_DIR, exist_ok=True)
 
+    last_updated = None
+    if blobs:
+        latest_blob = max(blobs, key=lambda b: b.updated)
+        last_updated = latest_blob.updated.strftime('%B %d, %Y')
+
     for blob in blobs:
         sanitized_name = blob.name.replace(".pdf", "")
         preview_filename = f"{sanitized_name}.png"
@@ -82,6 +87,6 @@ if __name__ == '__main__':
             'preview_image': f'previews/{preview_filename}'
         })
 
-    html = render_index(songbooks)
+    html = render_index(songbooks, last_updated=last_updated)
     write_output(html)
     print(f"Generated {len(songbooks)} songbooks → {OUTPUT_DIR}/index.html")
