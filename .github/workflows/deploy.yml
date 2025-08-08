@@ -35,13 +35,8 @@ jobs:
     env:
       GCS_BUCKET: ukulele-tuesday-songbooks
     steps:
-      - name: Authenticate to Google Cloud
-        id: auth
-        uses: 'google-github-actions/auth@v2'
-        with:
-          # Replace with your own values
-          workload_identity_provider: 'projects/YOUR_GCP_PROJECT_ID/locations/global/workloadIdentityPools/YOUR_POOL_ID/providers/YOUR_PROVIDER_ID'
-          service_account: 'YOUR_GCP_SERVICE_ACCOUNT@YOUR_GCP_PROJECT_ID.iam.gserviceaccount.com'
+      - name: Set up Cloud SDK
+        uses: 'google-github-actions/setup-gcloud@v2'
 
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
