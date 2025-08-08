@@ -70,6 +70,40 @@
       transform: translateY(-5px);
       box-shadow: 0 8px 20px rgba(0,0,0,0.08);
     }
+    .preview-container {
+      position: relative;
+    }
+    .download-icon {
+      position: absolute;
+      bottom: 12px;
+      right: 12px;
+      background-color: rgba(15, 139, 129, 0.9);
+      color: white;
+      border-radius: 50%;
+      width: 44px;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out;
+      transform: scale(0.9);
+      opacity: 0;
+    }
+    .songbook-item a:hover .download-icon {
+      opacity: 1;
+      transform: scale(1);
+    }
+    .download-icon svg {
+      width: 24px;
+      height: 24px;
+    }
+    /* Show icon on touch devices */
+    @media (hover: none) {
+      .download-icon {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
     .songbook-item img {
       width: 100%;
       height: auto;
@@ -150,7 +184,12 @@
       {% for file in files %}
         <li class="songbook-item">
           <a href="{{ file.url }}" target="_blank" rel="noopener noreferrer">
-            <img src="{{ file.preview_image }}" alt="Preview of {{ file.title }}">
+            <div class="preview-container">
+              <img src="{{ file.preview_image }}" alt="Preview of {{ file.title }}">
+              <div class="download-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              </div>
+            </div>
             <div class="song-details">
               <div class="title" title="{{ file.title }}">{{ file.title }}</div>
               {% if file.subject %}
