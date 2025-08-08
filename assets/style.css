@@ -152,8 +152,7 @@
       background-color: var(--cta-bg-color);
       border-radius: 8px;
       padding: 24px 32px;
-      margin: 2em auto;
-      max-width: 600px;
+      margin: 2em auto 0;
       text-align: center;
     }
     .support-cta h3 {
