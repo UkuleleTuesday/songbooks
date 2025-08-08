@@ -152,6 +152,34 @@
     footer .more-links a:hover {
       opacity: 0.8;
     }
+    footer .support-cta {
+      background-color: rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 1em 1.5em;
+      margin: 2em auto;
+      max-width: 600px;
+    }
+    footer .support-cta h3 {
+      margin-top: 0;
+      font-size: 1.2em;
+    }
+    footer .support-cta p {
+      margin-bottom: 1.5em;
+      opacity: 0.9;
+    }
+    footer .cta-button {
+      display: inline-block;
+      background-color: #fff;
+      color: var(--primary-color);
+      padding: 12px 24px;
+      border-radius: 5px;
+      text-decoration: none;
+      font-weight: bold;
+      transition: background-color 0.2s, color 0.2s;
+    }
+    footer .cta-button:hover {
+      background-color: #f0f0f0;
+    }
     footer .social-links {
       display: flex;
       justify-content: center;
