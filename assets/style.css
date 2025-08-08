@@ -1,5 +1,6 @@
 :root {
       --primary-color: #0f8b81;
+      --accent-color: #fdb813;
       --text-color: #333;
       --bg-color: #fdfdfd;
       --container-width: 800px;
@@ -155,8 +156,8 @@
     footer .support-cta {
       background-color: rgba(255, 255, 255, 0.1);
       border-radius: 8px;
-      padding: 1em 1.5em;
-      margin: 2em auto;
+      padding: 24px 32px;
+      margin: 24px auto;
       max-width: 600px;
     }
     footer .support-cta h3 {
@@ -167,17 +168,22 @@
       margin-bottom: 1.5em;
       opacity: 0.9;
     }
+    footer .micro-proof {
+      font-size: 1.05em;
+      margin-bottom: 1.75em !important;
+    }
     footer .cta-button {
       display: inline-flex;
       align-items: center;
       gap: 0.5em;
-      background-color: #fff;
+      background-color: var(--accent-color);
       color: var(--primary-color);
       padding: 12px 24px;
       border-radius: 5px;
       text-decoration: none;
       font-weight: bold;
-      transition: background-color 0.2s, color 0.2s;
+      transition: transform 150ms ease-in-out, box-shadow 150ms ease-in-out;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
     }
     .heart-icon {
       width: 1em;
@@ -185,11 +191,12 @@
       transition: fill 0.2s, stroke 0.2s;
     }
     footer .cta-button:hover .heart-icon {
-      fill: #e53935;
-      stroke: #e53935;
+      fill: var(--primary-color);
+      stroke: var(--primary-color);
     }
     footer .cta-button:hover {
-      background-color: #f0f0f0;
+      transform: scale(1.05);
+      box-shadow: 0 6px 16px rgba(0,0,0,0.15);
     }
     footer .social-links {
       display: flex;
@@ -214,4 +221,9 @@
       opacity: 0.8;
       max-width: 70ch;
       padding: 0 1em;
+    }
+    @media (max-width: 480px) {
+      footer .support-cta {
+        padding: 16px;
+      }
     }
