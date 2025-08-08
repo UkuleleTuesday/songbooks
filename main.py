@@ -31,7 +31,7 @@ def process_pdf_blob(blob, preview_path):
     # Generate preview image
     if len(pdf_document) > 0:
         first_page = pdf_document.load_page(0)
-        pix = first_page.get_pixmap(dpi=150)
+        pix = first_page.get_pixmap(dpi=150, alpha=True)
         pix.save(preview_path)
 
     # Extract metadata, fallback to filename for title
