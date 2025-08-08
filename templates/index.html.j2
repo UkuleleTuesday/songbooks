@@ -165,9 +165,23 @@
         </a>
       </div>
       {% if last_updated %}
-      <div class="last-updated">
-        Last updated: {{ last_updated }}
+      <div class="last-updated" id="last-updated-container" data-timestamp="{{ last_updated }}">
+        Last updated: <span id="last-updated-text"></span>
       </div>
+      <script>
+        (function() {
+          const container = document.getElementById('last-updated-container');
+          const timestamp = container.dataset.timestamp;
+          if (timestamp) {
+            const date = new Date(timestamp);
+            const options = {
+              year: 'numeric', month: 'long', day: 'numeric',
+              hour: 'numeric', minute: '2-digit'
+            };
+            document.getElementById('last-updated-text').textContent = new Intl.DateTimeFormat(navigator.language, options).format(date);
+          }
+        })();
+      </script>
       {% endif %}
     </footer>
   </div>

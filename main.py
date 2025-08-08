@@ -78,7 +78,7 @@ if __name__ == '__main__':
     last_updated = None
     if blobs:
         latest_blob = max(blobs, key=lambda b: b.updated)
-        last_updated = latest_blob.updated.strftime('%B %d, %Y')
+        last_updated = latest_blob.updated.isoformat()
 
     for blob in blobs:
         sanitized_name = blob.name.replace(".pdf", "")
