@@ -3,139 +3,173 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>~*~ Ukulele Tuesday's Web Page ~*~</title>
+  <title>Ukulele Tuesday Songbooks</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Pattaya&display=swap" rel="stylesheet">
   <style>
-    @keyframes blink {
-      50% { opacity: 0; }
+    :root {
+      --primary-color: #0f8b81;
+      --text-color: #333;
+      --bg-color: #fdfdfd;
+      --container-width: 800px;
     }
     body {
-      font-family: "Comic Sans MS", "Comic Sans", cursive, sans-serif;
-      background-image: url('https://i.gifer.com/origin/f6/f6515214b43697e85c8b2a8a2512f43a_w200.gif');
-      color: #ffff00;
-      text-align: center;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      margin: 0;
+      padding: 2em 1em;
+      line-height: 1.6;
     }
-    a {
-      color: #00ffff;
-      font-weight: bold;
-    }
-    a:hover {
-      color: #ff00ff;
-    }
-    h1 {
-      font-family: "Impact", "Arial Black", sans-serif;
-      font-size: 50px;
-      font-weight: bold;
-      color: #ff00ff;
-      text-shadow: 3px 3px 0px #00ffff, 5px 5px 0px #ff0000;
-    }
-    h2 {
-      font-family: "Comic Sans MS", cursive, sans-serif;
-      font-size: 24px;
-      color: #00ff00;
-      animation: blink 1s linear infinite;
-    }
-    table {
+    .container {
+      max-width: var(--container-width);
       margin: 0 auto;
-      border: 5px outset #c0c0c0;
-      background-color: #000080;
-      width: 800px;
     }
-    td {
-      padding: 10px;
-      border: 2px inset #c0c0c0;
+    header {
+      text-align: center;
+      margin-bottom: 2em;
+      padding: 1em;
+      background-color: var(--primary-color);
+      color: #fff;
+      border-radius: 8px;
     }
-    .songbook-item {
-      display: inline-block;
-      width: 200px;
-      margin: 15px;
-      padding: 10px;
-      border: 3px double #ffff00;
-      background-color: #333333;
-      vertical-align: top;
+    header h1 {
+      font-family: 'Pattaya', sans-serif;
+      font-size: 3em;
+      font-weight: normal;
+      margin-bottom: 0;
+      color: #fff;
+      line-height: 1.2;
+    }
+    header h2 {
+      font-size: 1.2em;
+      font-weight: normal;
+      color: rgba(255, 255, 255, 0.85);
+    }
+    .songbook-list {
+      list-style: none;
+      padding: 0;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 1.5em;
+    }
+    .songbook-item a {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      text-decoration: none;
+      color: var(--text-color);
+      border-radius: 8px;
+      overflow: hidden;
+      background-color: #fff;
+      border: 1px solid #eee;
+      transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+    }
+    .songbook-item a:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 8px 20px rgba(0,0,0,0.08);
     }
     .songbook-item img {
       width: 100%;
       height: auto;
-      border: 2px solid #ff00ff;
+      display: block;
+      aspect-ratio: 1 / 1.414; /* A4 paper ratio */
+      object-fit: cover;
+      background-color: #f0f0f0;
+    }
+    .songbook-item .song-details {
+      padding: 0.8em 1em;
+      min-height: 4.5em; /* Provide enough space for multi-line titles/subtitles */
     }
     .songbook-item .title {
       font-weight: bold;
-      color: #00ff00;
-      margin-top: 10px;
+      margin-bottom: 0.25em;
     }
     .songbook-item .subtitle {
       font-size: 0.85em;
-      color: #c0c0c0;
+      color: #666;
     }
     footer {
-      margin-top: 30px;
-      padding-top: 20px;
-      border-top: 5px ridge #c0c0c0;
+      margin-top: 2em;
+      padding: 1.5em 1em;
+      background-color: var(--primary-color);
+      color: #fff;
+      text-align: center;
+      border-radius: 8px;
     }
-    .logo {
-      animation: spin 3s linear infinite;
+    footer .logo {
+      height: 60px;
+      margin-bottom: 1em;
     }
-    @keyframes spin { 
-      100% { transform: rotate(360deg); } 
+    footer .social-links {
+      display: flex;
+      justify-content: center;
+      gap: 1.5em;
+      margin-top: 1em;
     }
-    .last-updated {
+    footer .social-links a {
+      color: #fff;
+      transition: opacity 0.2s;
+    }
+    footer .social-links a:hover {
+      opacity: 0.8;
+    }
+    footer .social-links svg {
+      width: 28px;
+      height: 28px;
+    }
+    footer .last-updated {
       margin-top: 1.5em;
-      font-size: 14px;
-      color: #ffff00;
+      font-size: 0.85em;
+      opacity: 0.8;
     }
   </style>
 </head>
 <body>
-  <audio autoplay loop src="https://www.mididb.com/dl.asp?id=30256">
-    <p>If you are reading this, it is because your browser does not support the audio element. Bummer!</p>
-  </audio>
-
-  <table border="5" cellpadding="10" cellspacing="5">
-    <tr>
-      <td>
-        <header>
-          <marquee behavior="scroll" direction="left" scrollamount="10"><h1>!!! Ukulele Tuesday's Web Page !!!</h1></marquee>
-          <h2>~~~*~*~*~ Welcome 2 My Humble Home on the World Wide Web ~*~*~*~~~</h2>
-          <img src="https://i.gifer.com/origin/b4/b4b3a43f8736b4e5b9b28a2a433f81e6_w200.gif" alt="Under Construction">
-        </header>
-        
-        <main>
-          {% for file in files %}
-            <div class="songbook-item">
-              <a href="{{ file.url }}" target="_blank">
-                <img src="{{ file.preview_image }}" alt="Preview of {{ file.title }}" border="2">
-                <div class="song-details">
-                  <div class="title" title="{{ file.title }}">{{ file.title }}</div>
-                  {% if file.subject %}
-                  <div class="subtitle" title="{{ file.subject }}">{{ file.subject }}</div>
-                  {% endif %}
-                </div>
-              </a>
+  <div class="container">
+    <header>
+      <h1>Ukulele Tuesday Songbooks</h1>
+      <h2>Download songbooks from Ukulele Tuesday, the world's most famous ukulele play-along.</h2>
+    </header>
+    
+    <main>
+      <ul class="songbook-list">
+      {% for file in files %}
+        <li class="songbook-item">
+          <a href="{{ file.url }}" target="_blank" rel="noopener noreferrer">
+            <img src="{{ file.preview_image }}" alt="Preview of {{ file.title }}">
+            <div class="song-details">
+              <div class="title" title="{{ file.title }}">{{ file.title }}</div>
+              {% if file.subject %}
+              <div class="subtitle" title="{{ file.subject }}">{{ file.subject }}</div>
+              {% endif %}
             </div>
-          {% endfor %}
-        </main>
-        
-        <footer>
-          <img src="assets/ut-logo.png" alt="Ukulele Tuesday Logo" class="logo" height="80">
-          <p>Questions? Comments? Send me an electronic mail!</p>
-          <a href="mailto:info@ukuleletuesday.ie"><img src="https://www.picgifs.com/graphics/e/email/graphics-email-562916.gif" alt="Email me!"></a>
-          
-          {% if last_updated %}
-          <div class="last-updated">
-            This page was last updated on: {{ last_updated }}
-          </div>
-          {% endif %}
-          
-          <hr>
-          
-          <p>You are visitor number:</p>
-          <!--webbot bot="HitCounter" i-image="4" i-digits="7" PREVIEW="&lt;img src=&quot;/_vti_bin/fpcount.exe/?Page=index.html|Image=4|Digits=7&quot; ALT=&quot;Hit Counter&quot;&gt;" -->
-          <a href="https://www.webfreecounter.com/" target="_blank"><img src="https://www.webfreecounter.com/hit.php?id=gvoakpko&nd=7&style=1" border="0" alt="hit counter"></a>
-          
-          <p><img src="https://cyber.dabamos.de/netscape/netscap4.gif" alt="Best viewed with Netscape Navigator"></p>
-        </footer>
-      </td>
-    </tr>
-  </table>
+          </a>
+        </li>
+      {% endfor %}
+      </ul>
+    </main>
+    
+    <footer>
+      <img src="assets/ut-logo.png" alt="Ukulele Tuesday Logo" class="logo">
+      <div class="social-links">
+        <a href="https://www.instagram.com/ukuleletuesday/" target="_blank" rel="noopener noreferrer" title="Instagram">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line></svg>
+        </a>
+        <a href="https://www.youtube.com/@UkuleleTuesday" target="_blank" rel="noopener noreferrer" title="YouTube">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.33z"></path><polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02"></polygon></svg>
+        </a>
+        <a href="https://ukuleletuesday.ie/" target="_blank" rel="noopener noreferrer" title="Website">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+        </a>
+      </div>
+      {% if last_updated %}
+      <div class="last-updated">
+        Last updated: {{ last_updated }}
+      </div>
+      {% endif %}
+    </footer>
+  </div>
 </body>
 </html>
