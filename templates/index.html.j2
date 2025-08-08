@@ -28,7 +28,8 @@
               </div>
             </div>
             <div class="song-details">
-              <div class="title" title="{{ file.title }}">{{ file.title }}</div>
+              {% set display_title = file.title.replace('Ukulele Tuesday - ', '') %}
+              <div class="title" title="{{ display_title }}">{{ display_title }}</div>
               {% if file.subject %}
               <div class="subtitle" title="{{ file.subject }}">{{ file.subject }}</div>
               {% endif %}
