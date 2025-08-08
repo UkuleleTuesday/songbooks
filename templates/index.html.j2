@@ -28,7 +28,7 @@
               </div>
             </div>
             <div class="song-details">
-              <div class="title" title="{{ file.title }}">{{ file.title }}</div>
+              <div class="title" title="{{ file.title }}">{{ file.title | upper }}</div>
               {% if file.subject %}
               <div class="subtitle" title="{{ file.subject }}">{{ file.subject }}</div>
               {% endif %}

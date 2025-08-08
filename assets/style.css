@@ -110,6 +110,7 @@
     .songbook-item .title {
       font-weight: bold;
       margin-bottom: 0.25em;
+      text-align: center;
     }
     .songbook-item .subtitle {
       font-size: 0.85em;
