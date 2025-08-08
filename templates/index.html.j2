@@ -90,6 +90,31 @@
       {% endif %}
     </footer>
   </div>
-  <script data-name="BMC-Widget" data-cfasync="false" src="https://cdnjs.buymeacoffee.com/1.0.0/widget.prod.min.js" data-id="ukuleletuesday" data-description="Support me on Buy me a coffee!" data-message="If you enjoy our songbooks, keep the music going by making a small donation!" data-color="#40DCA5" data-position="Right" data-x_margin="18" data-y_margin="18"></script>
+  <script>
+    (function () {
+      let loaded = false;
+      function loadBmc() {
+        if (loaded) return; loaded = true;
+        const s = document.createElement('script');
+        s.src = 'https://cdnjs.buymeacoffee.com/1.0.0/widget.prod.min.js';
+        s.setAttribute('data-name', 'BMC-Widget');
+        s.setAttribute('data-cfasync', 'false');
+        s.setAttribute('data-id', 'ukuleletuesday');
+        s.setAttribute('data-description', 'Support me on Buy me a coffee!');
+        s.setAttribute('data-message', 'If you enjoy our songbooks, keep the music going by making a small donation!');
+        s.setAttribute('data-color', '#40DCA5');
+        s.setAttribute('data-position', 'Right');
+        s.setAttribute('data-x_margin', '18');
+        s.setAttribute('data-y_margin', '18');
+        document.body.appendChild(s);
+      }
+
+      // Fire on first scroll; passive avoids blocking scroll, once auto-cleans.
+      window.addEventListener('scroll', loadBmc, { once: true, passive: true });
+
+      // Optional safety: if user never scrolls, load after 12s anyway.
+      setTimeout(loadBmc, 12000);
+    })();
+  </script>
 </body>
 </html>
