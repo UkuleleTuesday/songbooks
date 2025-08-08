@@ -150,7 +150,7 @@
     }
     .support-cta {
       background-color: var(--cta-bg-color);
-      background-image: linear-gradient(to bottom, var(--cta-bg-color), var(--bg-color));
+      background-image: linear-gradient(to bottom, var(--bg-color), var(--cta-bg-color));
       border-radius: 8px;
       padding: 28px 32px;
       margin: 2em auto 0;
