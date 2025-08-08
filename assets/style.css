@@ -138,6 +138,7 @@
     footer .more-links a {
       color: #fff;
       text-decoration: underline;
+      font-weight: bold;
     }
     footer .disclaimer a:hover,
     footer .more-links a:hover {
