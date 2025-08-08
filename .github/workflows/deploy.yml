@@ -82,9 +82,11 @@ jobs:
 
   # Build and deploy job
   deploy:
-    # Only run on pushes/manual triggers, or if the check job found changes
+    # Always run for pushes and manual triggers.
+    # For schedules, only run if the check job found changes.
     if: github.event_name != 'schedule' || needs.check-for-changes.outputs.changes_detected == 'true'
-    needs: check-for-changes
+    # Only depend on the check-for-changes job if it's a scheduled run.
+    needs: ${{ (github.event_name == 'schedule' && fromJSON('["check-for-changes"]')) || fromJSON('[]') }}
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
