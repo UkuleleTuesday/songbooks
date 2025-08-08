@@ -17,7 +17,14 @@ def list_pdf_blobs(bucket_name):
     client = storage.Client.create_anonymous_client()
     bucket = client.bucket(bucket_name)
     blobs = client.list_blobs(bucket)
-    return sorted([blob for blob in blobs if blob.name.lower().endswith('.pdf')], key=lambda b: b.name.lower())
+
+    def sort_key(blob):
+        # Sort regular.pdf first, then others alphabetically
+        is_regular = blob.name.lower() == 'regular.pdf'
+        return (not is_regular, blob.name.lower())
+
+    pdf_blobs = [blob for blob in blobs if blob.name.lower().endswith('.pdf')]
+    return sorted(pdf_blobs, key=sort_key)
 
 def process_pdf_blob(blob, preview_path):
     """
