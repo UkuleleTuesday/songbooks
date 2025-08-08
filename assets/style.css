@@ -12,6 +12,7 @@
       margin: 0;
       padding: 2em 1em;
       line-height: 1.6;
+      font-size: 15px;
     }
     .container {
       max-width: var(--container-width);
