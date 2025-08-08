@@ -168,7 +168,9 @@
       opacity: 0.9;
     }
     footer .cta-button {
-      display: inline-block;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5em;
       background-color: #fff;
       color: var(--primary-color);
       padding: 12px 24px;
@@ -176,6 +178,15 @@
       text-decoration: none;
       font-weight: bold;
       transition: background-color 0.2s, color 0.2s;
+    }
+    .heart-icon {
+      width: 1em;
+      height: 1em;
+      transition: fill 0.2s, stroke 0.2s;
+    }
+    footer .cta-button:hover .heart-icon {
+      fill: #e53935;
+      stroke: #e53935;
     }
     footer .cta-button:hover {
       background-color: #f0f0f0;
