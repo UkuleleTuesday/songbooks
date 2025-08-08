@@ -2,7 +2,7 @@
 
 This repository contains the code for a static website that displays the entire collection of [Ukulele Tuesday](https://ukuleletuesday.ie/) songbooks. The site provides a browsable, grid-based view of all songbooks, each with a preview image and a direct link to download the PDF.
 
-The live site is automatically updated and deployed via GitHub Actions.
+The live site is automatically updated and deployed via GitHub Actions to [https://ukuleletuesday.github.io/songbooks/](https://ukuleletuesday.github.io/songbooks/).
 
 ## How It Works
 
@@ -21,8 +21,8 @@ To generate the website on your local machine:
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/your-repository.git
-    cd your-repository
+    git clone https://github.com/UkuleleTuesday/songbooks.git
+    cd songbooks
     ```
 2.  **Install dependencies:**
     The project uses `uv` for package management. You'll also need `mupdf-tools`.
