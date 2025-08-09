@@ -19,9 +19,9 @@ def list_pdf_blobs(bucket_name):
     blobs = client.list_blobs(bucket)
 
     def sort_key(blob):
-        # Sort regular.pdf first, then others alphabetically
-        is_regular = blob.name.lower() == 'regular.pdf'
-        return (not is_regular, blob.name.lower())
+        # Sort current pdf first, then others alphabetically
+        is_current = 'current' in blob.name.lower()
+        return (not is_current, blob.name.lower())
 
     pdf_blobs = [blob for blob in blobs if blob.name.lower().endswith('.pdf')]
     return sorted(pdf_blobs, key=sort_key)
