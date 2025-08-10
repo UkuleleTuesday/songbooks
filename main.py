@@ -7,6 +7,7 @@ from jinja2 import Environment, FileSystemLoader
 
 # Configuration
 BUCKET_NAME = os.environ['GCS_BUCKET']
+BASE_URL = 'https://songbooks.ukuleletuesday.ie'
 OUTPUT_DIR = 'public'
 PREVIEW_DIR = os.path.join(OUTPUT_DIR, 'previews')
 TEMPLATE_DIR = 'templates'
@@ -48,11 +49,11 @@ def process_pdf_blob(blob, preview_path):
 
     return {'title': title, 'subject': subject}
 
-def render_index(file_list, last_updated=None):
+def render_index(file_list, last_updated=None, base_url=None):
     """Renders the HTML index page."""
     env = Environment(loader=FileSystemLoader(TEMPLATE_DIR), autoescape=True)
     tmpl = env.get_template(TEMPLATE_FILE)
-    return tmpl.render(files=file_list, last_updated=last_updated)
+    return tmpl.render(files=file_list, last_updated=last_updated, base_url=base_url)
 
 def write_output(html):
     """Writes the rendered HTML to the output directory."""
@@ -94,6 +95,6 @@ if __name__ == '__main__':
             'preview_image': f'previews/{preview_filename}'
         })
 
-    html = render_index(songbooks, last_updated=last_updated)
+    html = render_index(songbooks, last_updated=last_updated, base_url=BASE_URL)
     write_output(html)
     print(f"Generated {len(songbooks)} songbooks → {OUTPUT_DIR}/index.html")
