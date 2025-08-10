@@ -30,7 +30,11 @@
       {% for file in files %}
         <li class="songbook-item">
           {% set display_title = file.title.replace('Ukulele Tuesday - ', '') %}
-          <a href="{{ file.url }}" target="_blank" rel="noopener noreferrer" onclick="mixpanel.track('Songbook Download', {'songbook_title': {{ display_title | tojson }}, 'songbook_url': {{ file.url | tojson }}{% if file.subject %}, 'songbook_subject': {{ file.subject | tojson }}{% endif %}});">
+          <a href="{{ file.url }}" target="_blank" rel="noopener noreferrer"
+             class="songbook-link"
+             data-songbook-title="{{ display_title | escape }}"
+             data-songbook-url="{{ file.url | escape }}"
+             {% if file.subject %}data-songbook-subject="{{ file.subject | escape }}"{% endif %}>
             <div class="preview-container">
               <img src="{{ file.preview_image }}" alt="Preview of {{ file.title }}">
               <div class="download-icon">
@@ -100,6 +104,23 @@
       {% endif %}
     </footer>
   </div>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const songbookLinks = document.querySelectorAll('.songbook-link');
+      songbookLinks.forEach(function(link) {
+        link.addEventListener('click', function() {
+          const properties = {
+            'songbook_title': link.dataset.songbookTitle,
+            'songbook_url': link.dataset.songbookUrl
+          };
+          if (link.dataset.songbookSubject) {
+            properties['songbook_subject'] = link.dataset.songbookSubject;
+          }
+          mixpanel.track('Songbook Download', properties);
+        });
+      });
+    });
+  </script>
   <script>
     (function () {
       let loaded = false;
