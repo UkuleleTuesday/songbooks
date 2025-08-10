@@ -30,7 +30,7 @@
       {% for file in files %}
         <li class="songbook-item">
           {% set display_title = file.title.replace('Ukulele Tuesday - ', '') %}
-          <a href="{{ file.url }}" target="_blank" rel="noopener noreferrer" onclick="mixpanel.track('Songbook Clicked', {'songbook_title': '{{ display_title | escape('js') }}'{% if file.subject %}, 'songbook_subject': '{{ file.subject | escape('js') }}'{% endif %}});">
+          <a href="{{ file.url }}" target="_blank" rel="noopener noreferrer" onclick="mixpanel.track('Songbook Clicked', {'songbook_title': {{ display_title | tojson }}{% if file.subject %}, 'songbook_subject': {{ file.subject | tojson }}{% endif %}});">
             <div class="preview-container">
               <img src="{{ file.preview_image }}" alt="Preview of {{ file.title }}">
               <div class="download-icon">
