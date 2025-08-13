@@ -53,6 +53,7 @@
              class="songbook-link"
              data-songbook-title="{{ display_title | escape }}"
              data-songbook-url="{{ file.url | escape }}"
+             data-songbook-filename="{{ file.filename | escape }}"
              {% if file.subject %}data-songbook-subject="{{ file.subject | escape }}"{% endif %}>
             <div class="preview-container">
               <img src="{{ file.preview_image }}" alt="Preview of {{ file.title }}">
@@ -130,7 +131,8 @@
         link.addEventListener('click', function() {
           const properties = {
             'songbook_title': link.dataset.songbookTitle,
-            'songbook_url': link.dataset.songbookUrl
+            'songbook_url': link.dataset.songbookUrl,
+            'songbook_filename': link.dataset.songbookFilename
           };
           if (link.dataset.songbookSubject) {
             properties['songbook_subject'] = link.dataset.songbookSubject;
