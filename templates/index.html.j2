@@ -47,7 +47,7 @@
     <main>
       <ul class="songbook-list">
       {% for file in files %}
-        <li class="songbook-item">
+        <li class="songbook-item" id="{{ file.title.replace('Ukulele Tuesday - ', '').replace(' Songbook', '').lower() }}">
           {% set display_title = file.title.replace('Ukulele Tuesday - ', '') %}
           <a href="{{ file.url }}" target="_blank" rel="noopener noreferrer"
              class="songbook-link"

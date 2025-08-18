@@ -3,7 +3,7 @@
       --accent-color: #EFCF56;
       --text-color: #333;
       --bg-color: #fdfdfd;
-      --container-width: 800px;
+      --container-width: 500px;
       --heart-color: #e5398d;
     }
     body {
@@ -45,8 +45,8 @@
     .songbook-list {
       list-style: none;
       padding: 0;
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      display: flex;
+      flex-direction: column;
       gap: 1.5em;
     }
     .songbook-item a {
