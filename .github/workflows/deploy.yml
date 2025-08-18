@@ -42,6 +42,7 @@ jobs:
       - name: Decide whether to build
         id: check
         run: |
+          set -x
           if [[ "${{ github.event_name }}" != "schedule" ]]; then
             echo "Build triggered by push or manual dispatch. Proceeding."
             echo "changes_detected=true" >> $GITHUB_OUTPUT
