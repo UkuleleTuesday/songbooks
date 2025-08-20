@@ -1,6 +1,7 @@
 import os
 import io
 import shutil
+import json
 import fitz  # PyMuPDF
 from google.cloud import storage
 from jinja2 import Environment, FileSystemLoader
@@ -13,27 +14,27 @@ PREVIEW_DIR = os.path.join(OUTPUT_DIR, 'previews')
 TEMPLATE_DIR = 'templates'
 TEMPLATE_FILE = 'index.html.j2'
 
-def list_pdf_blobs(bucket_name):
-    """Lists all PDF blobs in the bucket."""
+def get_manifest(bucket_name):
+    """Downloads and parses the manifest.json file from the bucket."""
     client = storage.Client.create_anonymous_client()
     bucket = client.bucket(bucket_name)
-    blobs = client.list_blobs(bucket)
+    manifest_blob = bucket.blob('manifest.json')
+    manifest_data = manifest_blob.download_as_text()
+    return json.loads(manifest_data)
 
-    def sort_key(blob):
-        # Sort current pdf first, then others alphabetically
-        is_current = 'current' in blob.name.lower()
-        return (not is_current, blob.name.lower())
+def download_pdf_from_url(url):
+    """Downloads a PDF from a URL and returns the bytes."""
+    from urllib.request import urlopen
+    with urlopen(url) as response:
+        return response.read()
 
-    pdf_blobs = [blob for blob in blobs if blob.name.lower().endswith('.pdf')]
-    return sorted(pdf_blobs, key=sort_key)
-
-def process_pdf_blob(blob, preview_path):
+def process_pdf_url(edition_name, pdf_url, preview_path):
     """
-    Downloads a PDF blob, saves the first page as a PNG image,
+    Downloads a PDF from URL, saves the first page as a PNG image,
     and returns its metadata.
     """
-    print(f"  Processing {blob.name}...")
-    pdf_data = blob.download_as_bytes()
+    print(f"  Processing {edition_name}...")
+    pdf_data = download_pdf_from_url(pdf_url)
     pdf_document = fitz.open(stream=pdf_data, filetype="pdf")
 
     # Generate preview image
@@ -42,9 +43,9 @@ def process_pdf_blob(blob, preview_path):
         pix = first_page.get_pixmap(dpi=150, alpha=True)
         pix.save(preview_path)
 
-    # Extract metadata, fallback to filename for title
+    # Extract metadata, fallback to edition name for title
     metadata = pdf_document.metadata
-    title = metadata.get('title') or blob.name.replace('.pdf', '')
+    title = metadata.get('title') or edition_name
     subject = metadata.get('subject', '') # Default to empty string if no subject
 
     return {'title': title, 'subject': subject}
@@ -70,28 +71,24 @@ def write_output(html):
         shutil.copytree(assets_src, assets_dest)
 
 if __name__ == '__main__':
-    print(f"Fetching songbooks from GCS bucket: {BUCKET_NAME}")
-    blobs = list_pdf_blobs(BUCKET_NAME)
+    print(f"Fetching songbook manifest from GCS bucket: {BUCKET_NAME}")
+    manifest = get_manifest(BUCKET_NAME)
     songbooks = []
     
     os.makedirs(PREVIEW_DIR, exist_ok=True)
 
-    last_updated = None
-    if blobs:
-        latest_blob = max(blobs, key=lambda b: b.updated)
-        last_updated = latest_blob.updated.isoformat()
+    last_updated = manifest.get('last_updated_utc')
 
-    for blob in blobs:
-        sanitized_name = blob.name.replace(".pdf", "")
-        preview_filename = f"{sanitized_name}.png"
+    for edition_name, edition_info in manifest['editions'].items():
+        preview_filename = f"{edition_name}.png"
         preview_path_abs = os.path.join(PREVIEW_DIR, preview_filename)
         
-        metadata = process_pdf_blob(blob, preview_path_abs)
+        metadata = process_pdf_url(edition_name, edition_info['url'], preview_path_abs)
 
         songbooks.append({
             'title': metadata['title'],
             'subject': metadata['subject'],
-            'url': f'https://storage.googleapis.com/{BUCKET_NAME}/{blob.name}',
+            'url': edition_info['url'],
             'preview_image': f'previews/{preview_filename}'
         })
 
