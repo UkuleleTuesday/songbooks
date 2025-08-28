@@ -2,7 +2,7 @@
 
 This repository contains the code for a static website that displays the entire collection of [Ukulele Tuesday](https://ukuleletuesday.ie/) songbooks. The site provides a browsable, grid-based view of all songbooks, each with a preview image and a direct link to download the PDF.
 
-The live site is automatically updated and deployed via GitHub Actions to [https://ukuleletuesday.github.io/songbooks/](https://ukuleletuesday.github.io/songbooks/).
+The live site is automatically updated and deployed via GitHub Actions to [https://songbooks.ukuleletuesday.ie/](https://songbooks.ukuleletuesday.ie/).
 
 ## How It Works
 
