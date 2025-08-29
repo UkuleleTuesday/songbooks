@@ -1,13 +1,14 @@
-# GitHub Copilot Setup Workflow
+# GitHub Copilot Setup Steps
 # This workflow sets up the development environment for GitHub Copilot coding agents
-name: Copilot Setup
+# Must be named copilot-setup-steps.yml with a copilot-setup-steps job per GitHub docs
+name: Copilot Setup Steps
 
 on:
   # This workflow is designed to be called by GitHub Copilot coding agents
   workflow_dispatch:
 
 jobs:
-  setup:
+  copilot-setup-steps:
     runs-on: ubuntu-latest
     env:
       GCS_BUCKET: ukulele-tuesday-songbooks

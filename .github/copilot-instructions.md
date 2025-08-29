@@ -7,7 +7,7 @@ Always reference these instructions first and fallback to search or bash command
 ## Working Effectively
 
 ### Bootstrap and Setup (Automated via GitHub Actions)
-The development environment setup is automated through the Copilot Setup workflow located at `.github/workflows/copilot-setup.yml`. This workflow handles:
+The development environment setup is automated through the Copilot Setup workflow located at `.github/workflows/copilot-setup-steps.yml`. This workflow handles:
 - Installing system dependencies (mupdf-tools)
 - Setting up the uv package manager
 - Installing Python dependencies via `uv sync`
@@ -99,7 +99,7 @@ The workflow can be triggered manually or will be automatically executed when Gi
 │   ├── copilot-instructions.md  # GitHub Copilot instructions
 │   └── workflows/
 │       ├── deploy.yml           # GitHub Actions deployment
-│       └── copilot-setup.yml    # GitHub Copilot setup automation
+│       └── copilot-setup-steps.yml    # GitHub Copilot setup automation
 └── public/              # Generated output (created by main.py)
     ├── index.html
     ├── assets/          # Copied from source assets/
