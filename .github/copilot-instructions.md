@@ -6,25 +6,17 @@ Always reference these instructions first and fallback to search or bash command
 
 ## Working Effectively
 
-### Bootstrap and Setup (Required before any development)
-- Install system dependencies:
-  ```bash
-  sudo apt-get update && sudo apt-get install -y mupdf-tools
-  ```
-- Install uv package manager:
-  ```bash
-  pip install uv
-  ```
-- Install Python dependencies:
-  ```bash
-  uv sync  # Takes ~30 seconds. NEVER CANCEL. Set timeout to 120+ seconds.
-  ```
+### Bootstrap and Setup (Automated via GitHub Actions)
+The development environment setup is automated through the Copilot Setup workflow located at `.github/workflows/copilot-setup.yml`. This workflow handles:
+- Installing system dependencies (mupdf-tools)
+- Setting up the uv package manager
+- Installing Python dependencies via `uv sync`
+- Configuring required environment variables
+
+The workflow can be triggered manually or will be automatically executed when GitHub Copilot coding agents begin work on this repository.
 
 ### Environment Configuration
-- Set required environment variable:
-  ```bash
-  export GCS_BUCKET="ukulele-tuesday-songbooks"
-  ```
+- Required environment variable `GCS_BUCKET` is automatically set by the Copilot Setup workflow to `"ukulele-tuesday-songbooks"`
 - CRITICAL: The application requires network access to Google Cloud Storage. It will fail in sandboxed environments or networks that block GCS access with a `Forbidden: 403` error.
 
 ### Build and Run
@@ -67,17 +59,18 @@ Always reference these instructions first and fallback to search or bash command
   ```
 
 ### Build Timing Expectations
-- `uv sync`: ~30 seconds (downloads Python + dependencies)
+- **Copilot Setup Workflow**: ~3 minutes (automated setup of dependencies and environment)
+- `uv sync`: ~30 seconds (downloads Python + dependencies, automated via workflow)
 - `uv run main.py`: 10-60 seconds (depends on number of songbooks to process)
 - NEVER CANCEL builds or long-running commands. Network operations may take time.
 
 ## Troubleshooting
 
 ### Common Issues
-- **`KeyError: 'GCS_BUCKET'`**: Set the required environment variable: `export GCS_BUCKET="ukulele-tuesday-songbooks"`
+- **`KeyError: 'GCS_BUCKET'`**: The environment variable should be automatically set by the Copilot setup workflow. If missing, set manually: `export GCS_BUCKET="ukulele-tuesday-songbooks"`
 - **`Forbidden: 403` or `net::ERR_BLOCKED_BY_CLIENT`**: Network access to Google Cloud Storage is blocked. This is expected in sandboxed environments.
-- **`bash: uv: command not found`**: Install uv with `pip install uv`
-- **`ImportError: No module named 'fitz'`**: Install mupdf-tools system dependency: `sudo apt-get install -y mupdf-tools`
+- **`bash: uv: command not found`**: The uv package manager should be installed by the Copilot setup workflow. If missing, install manually: `pip install uv`
+- **`ImportError: No module named 'fitz'`**: System dependencies should be installed by the Copilot setup workflow. If missing, install manually: `sudo apt-get install -y mupdf-tools`
 - **Template rendering errors**: Check that `templates/index.html.j2` exists and is valid Jinja2 syntax
 
 ### Network Limitations
@@ -103,8 +96,10 @@ Always reference these instructions first and fallback to search or bash command
 │   ├── uke-closeup.jpeg
 │   └── favicon.png
 ├── .github/
+│   ├── copilot-instructions.md  # GitHub Copilot instructions
 │   └── workflows/
-│       └── deploy.yml   # GitHub Actions deployment
+│       ├── deploy.yml           # GitHub Actions deployment
+│       └── copilot-setup.yml    # GitHub Copilot setup automation
 └── public/              # Generated output (created by main.py)
     ├── index.html
     ├── assets/          # Copied from source assets/

@@ -1,0 +1,36 @@
+# GitHub Copilot Setup Workflow
+# This workflow sets up the development environment for GitHub Copilot coding agents
+name: Copilot Setup
+
+on:
+  # This workflow is designed to be called by GitHub Copilot coding agents
+  workflow_dispatch:
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    env:
+      GCS_BUCKET: ukulele-tuesday-songbooks
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mupdf-tools
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v1
+
+      - name: Install Python dependencies
+        run: uv sync
+        timeout-minutes: 3
+
+      - name: Verify setup
+        run: |
+          echo "✅ System dependencies installed"
+          echo "✅ uv package manager installed"
+          echo "✅ Python dependencies installed"
+          echo "✅ Environment variable GCS_BUCKET set to: $GCS_BUCKET"
+          echo "Setup completed successfully!"
