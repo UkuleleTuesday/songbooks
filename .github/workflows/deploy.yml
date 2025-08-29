@@ -90,6 +90,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GCS_BUCKET: ukulele-tuesday-songbooks
+      BUYMEACOFFEE_API_TOKEN: ${{ secrets.BUYMEACOFFEE_API_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
