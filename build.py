@@ -48,6 +48,7 @@ def get_buymeacoffee_stats():
         all_supporters = []
         page = 1
         page_size = 50  # Larger page size to get more results per request
+        total_pages = 1  # Assume at least one page
         
         while True:
             params = {
@@ -67,6 +68,13 @@ def get_buymeacoffee_stats():
                 return fallback_stats
             
             data = response.json()
+
+            if page == 1:
+                # On the first request, get the total number of pages
+                total_pages = data.get('last_page', 1)
+
+            print(f"  Fetching page {page}/{total_pages}...")
+            
             supporters = data.get('data', [])
             
             if not supporters:
