@@ -3,6 +3,7 @@ import io
 import shutil
 import json
 import fitz  # PyMuPDF
+import requests
 from google.cloud import storage
 from jinja2 import Environment, FileSystemLoader
 
@@ -21,6 +22,65 @@ def get_manifest(bucket_name):
     manifest_blob = bucket.blob('manifest.json')
     manifest_data = manifest_blob.download_as_text()
     return json.loads(manifest_data)
+
+def get_buymeacoffee_stats():
+    """Fetch supporter statistics from Buy Me a Coffee API."""
+    # Fallback values in case API fails
+    fallback_stats = {
+        'total_amount': 912,
+        'supporter_count': 61,
+        'currency': '€'
+    }
+    
+    # Check if API token is available
+    api_token = os.environ.get('BUYMEACOFFEE_API_TOKEN')
+    if not api_token:
+        print("  No Buy Me a Coffee API token found, using fallback values")
+        return fallback_stats
+    
+    try:
+        # Make API request to Buy Me a Coffee
+        headers = {
+            'Authorization': f'Bearer {api_token}',
+            'Content-Type': 'application/json'
+        }
+        
+        response = requests.get(
+            'https://developers.buymeacoffee.com/api/v1/supporters',
+            headers=headers,
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            supporters = data.get('data', [])
+            
+            # Calculate totals
+            total_amount = 0
+            supporter_count = len(supporters)
+            
+            for supporter in supporters:
+                # The amount is typically in the smallest currency unit (cents)
+                amount = supporter.get('support_coffees', 0) * supporter.get('support_coffee_price', 3)
+                total_amount += amount
+            
+            print(f"  Fetched Buy Me a Coffee stats: €{total_amount} from {supporter_count} supporters")
+            
+            return {
+                'total_amount': int(total_amount),
+                'supporter_count': supporter_count,
+                'currency': '€'
+            }
+        else:
+            print(f"  Buy Me a Coffee API returned status {response.status_code}, using fallback values")
+            return fallback_stats
+            
+    except requests.RequestException as e:
+        print(f"  Error fetching Buy Me a Coffee stats: {e}, using fallback values")
+        return fallback_stats
+    except Exception as e:
+        print(f"  Unexpected error with Buy Me a Coffee API: {e}, using fallback values")
+        return fallback_stats
 
 def download_pdf_from_url(url):
     """Downloads a PDF from a URL and returns the bytes."""
@@ -50,11 +110,16 @@ def process_pdf_url(edition_name, pdf_url, preview_path):
 
     return {'title': title, 'subject': subject}
 
-def render_index(file_list, last_updated=None, base_url=None):
+def render_index(file_list, last_updated=None, base_url=None, supporter_stats=None):
     """Renders the HTML index page."""
     env = Environment(loader=FileSystemLoader(TEMPLATE_DIR), autoescape=True)
     tmpl = env.get_template(TEMPLATE_FILE)
-    return tmpl.render(files=file_list, last_updated=last_updated, base_url=base_url)
+    return tmpl.render(
+        files=file_list, 
+        last_updated=last_updated, 
+        base_url=base_url,
+        supporter_stats=supporter_stats
+    )
 
 def write_output(html):
     """Writes the rendered HTML to the output directory."""
@@ -78,6 +143,10 @@ if __name__ == '__main__':
     os.makedirs(PREVIEW_DIR, exist_ok=True)
 
     last_updated = manifest.get('last_updated_utc')
+    
+    # Fetch Buy Me a Coffee supporter statistics
+    print("Fetching Buy Me a Coffee supporter statistics...")
+    supporter_stats = get_buymeacoffee_stats()
 
     for edition_name, edition_info in manifest['editions'].items():
         preview_filename = f"{edition_name}.png"
@@ -92,6 +161,6 @@ if __name__ == '__main__':
             'preview_image': f'previews/{preview_filename}'
         })
 
-    html = render_index(songbooks, last_updated=last_updated, base_url=BASE_URL)
+    html = render_index(songbooks, last_updated=last_updated, base_url=BASE_URL, supporter_stats=supporter_stats)
     write_output(html)
     print(f"Generated {len(songbooks)} songbooks → {OUTPUT_DIR}/index.html")
