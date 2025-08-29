@@ -46,7 +46,7 @@ def get_buymeacoffee_stats():
         }
         
         all_supporters = []
-        page = 0
+        page = 1
         page_size = 50  # Larger page size to get more results per request
         
         while True:
@@ -67,7 +67,6 @@ def get_buymeacoffee_stats():
                 return fallback_stats
             
             data = response.json()
-            print(data)
             supporters = data.get('data', [])
             
             if not supporters:
@@ -77,8 +76,7 @@ def get_buymeacoffee_stats():
             all_supporters.extend(supporters)
             
             # Check if we've reached the last page
-            # Many APIs return fewer results than requested when at the last page
-            if len(supporters) < page_size:
+            if data.get('next_page_url') is None:
                 break
                 
             page += 1
@@ -103,7 +101,7 @@ def get_buymeacoffee_stats():
                 # Skip this supporter if values can't be converted to numbers
                 continue
         
-        print(f"  Fetched Buy Me a Coffee stats: €{total_amount} from {supporter_count} supporters ({page-1} pages)")
+        print(f"  Fetched Buy Me a Coffee stats: €{total_amount} from {supporter_count} supporters ({page} pages)")
         
         return {
             'total_amount': int(total_amount),
