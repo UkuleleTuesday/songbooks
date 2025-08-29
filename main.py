@@ -61,8 +61,15 @@ def get_buymeacoffee_stats():
             
             for supporter in supporters:
                 # The amount is typically in the smallest currency unit (cents)
-                amount = supporter.get('support_coffees', 0) * supporter.get('support_coffee_price', 3)
-                total_amount += amount
+                # Convert API response values to numbers to handle string responses
+                try:
+                    coffees = float(supporter.get('support_coffees', 0))
+                    price = float(supporter.get('support_coffee_price', 3))
+                    amount = coffees * price
+                    total_amount += amount
+                except (ValueError, TypeError):
+                    # Skip this supporter if values can't be converted to numbers
+                    continue
             
             print(f"  Fetched Buy Me a Coffee stats: €{total_amount} from {supporter_count} supporters")
             
