@@ -31,42 +31,42 @@ def get_buymeacoffee_stats():
         'supporter_count': 61,
         'currency': '€'
     }
-    
+
     # Check if API token is available
     api_token = os.environ.get('BUYMEACOFFEE_API_TOKEN')
     if not api_token:
         print("  No Buy Me a Coffee API token found, using fallback values")
         return fallback_stats
-    
+
     try:
         # Make API request to Buy Me a Coffee with pagination
         headers = {
             'Authorization': f'Bearer {api_token}',
             'Content-Type': 'application/json'
         }
-        
+
         all_supporters = []
         page = 1
-        page_size = 50  # Larger page size to get more results per request
+        page_size = 10  # Larger page size to get more results per request
         total_pages = 1  # Assume at least one page
-        
+
         while True:
             params = {
                 'page': page,
                 'per_page': page_size
             }
-            
+
             response = requests.get(
                 'https://developers.buymeacoffee.com/api/v1/supporters',
                 headers=headers,
                 params=params,
                 timeout=10
             )
-            
+
             if response.status_code != 200:
                 print(f"  Buy Me a Coffee API returned status {response.status_code} on page {page}, using fallback values")
                 return fallback_stats
-            
+
             data = response.json()
 
             if page == 1:
@@ -74,30 +74,30 @@ def get_buymeacoffee_stats():
                 total_pages = data.get('last_page', 1)
 
             print(f"  Fetching page {page}/{total_pages}...")
-            
+
             supporters = data.get('data', [])
-            
+
             if not supporters:
                 # No more supporters to fetch
                 break
-                
+
             all_supporters.extend(supporters)
-            
+
             # Check if we've reached the last page
             if data.get('next_page_url') is None:
                 break
-                
+
             page += 1
-            
+
             # Safety break to avoid infinite loops
             if page > 100:
                 print(f"  Warning: Stopped at page {page} to avoid infinite loop")
                 break
-        
+
         # Calculate totals from all supporters
         total_amount = 0
         supporter_count = len(all_supporters)
-        
+
         for supporter in all_supporters:
             # Convert API response values to numbers to handle string responses
             try:
@@ -108,15 +108,15 @@ def get_buymeacoffee_stats():
             except (ValueError, TypeError):
                 # Skip this supporter if values can't be converted to numbers
                 continue
-        
+
         print(f"  Fetched Buy Me a Coffee stats: €{int(total_amount)} from {supporter_count} supporters ({page} pages)")
-        
+
         return {
             'total_amount': int(total_amount),
             'supporter_count': supporter_count,
             'currency': '€'
         }
-            
+
     except requests.RequestException as e:
         print(f"  Error fetching Buy Me a Coffee stats: {e}, using fallback values")
         return fallback_stats
@@ -157,8 +157,8 @@ def render_index(file_list, last_updated=None, base_url=None, supporter_stats=No
     env = Environment(loader=FileSystemLoader(TEMPLATE_DIR), autoescape=True)
     tmpl = env.get_template(TEMPLATE_FILE)
     return tmpl.render(
-        files=file_list, 
-        last_updated=last_updated, 
+        files=file_list,
+        last_updated=last_updated,
         base_url=base_url,
         supporter_stats=supporter_stats
     )
@@ -168,7 +168,7 @@ def write_output(html):
     os.makedirs(PREVIEW_DIR, exist_ok=True)
     with open(os.path.join(OUTPUT_DIR, 'index.html'), 'w', encoding='utf-8') as f:
         f.write(html)
-    
+
     # Copy assets directory
     assets_src = 'assets'
     assets_dest = os.path.join(OUTPUT_DIR, 'assets')
@@ -181,11 +181,11 @@ if __name__ == '__main__':
     print(f"Fetching songbook manifest from GCS bucket: {BUCKET_NAME}")
     manifest = get_manifest(BUCKET_NAME)
     songbooks = []
-    
+
     os.makedirs(PREVIEW_DIR, exist_ok=True)
 
     last_updated = manifest.get('last_updated_utc')
-    
+
     # Fetch Buy Me a Coffee supporter statistics
     print("Fetching Buy Me a Coffee supporter statistics...")
     supporter_stats = get_buymeacoffee_stats()
@@ -193,7 +193,7 @@ if __name__ == '__main__':
     for edition_name, edition_info in manifest['editions'].items():
         preview_filename = f"{edition_name}.png"
         preview_path_abs = os.path.join(PREVIEW_DIR, preview_filename)
-        
+
         metadata = process_pdf_url(edition_name, edition_info['url'], preview_path_abs)
 
         songbooks.append({
