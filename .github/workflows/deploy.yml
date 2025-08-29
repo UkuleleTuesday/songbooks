@@ -49,19 +49,14 @@ jobs:
         id: check
         run: |
           set -x
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            echo "Build triggered by pull request. Always proceeding for PR validation."
-            echo "changes_detected=true" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          
-          if [[ "${{ github.event_name }}" != "schedule" ]]; then
+          if [[ "${{ github.event_name }}" == "push" || "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "Build triggered by push or manual dispatch. Proceeding."
             echo "changes_detected=true" >> $GITHUB_OUTPUT
             exit 0
           fi
 
-          echo "Build triggered by schedule. Checking for recent changes in GCS."
+          # For schedule and PR events, run the full validation logic
+          echo "Build triggered by schedule or PR. Checking for recent changes in GCS."
           CUTOFF_TIME=$(date -u -d '15 minutes ago' +%s)
           GCS_PATH="gs://${GCS_BUCKET}/"
 
@@ -90,6 +85,13 @@ jobs:
           else
             echo "No recent changes detected. Last update at $LAST_UPDATED_STR. Skipping deployment."
             echo "changes_detected=false" >> $GITHUB_OUTPUT
+          fi
+          
+          # Handle pull request check at the end to ensure all script validation runs
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "Build triggered by pull request. Always proceeding for PR validation."
+            echo "changes_detected=true" >> $GITHUB_OUTPUT
+            exit 0
           fi
 
   # Build job - runs on all triggers including PRs
