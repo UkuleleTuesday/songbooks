@@ -101,7 +101,7 @@ def get_buymeacoffee_stats():
                 # Skip this supporter if values can't be converted to numbers
                 continue
         
-        print(f"  Fetched Buy Me a Coffee stats: €{total_amount} from {supporter_count} supporters ({page} pages)")
+        print(f"  Fetched Buy Me a Coffee stats: €{int(total_amount)} from {supporter_count} supporters ({page} pages)")
         
         return {
             'total_amount': int(total_amount),
