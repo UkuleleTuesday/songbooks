@@ -22,7 +22,7 @@ The workflow can be triggered manually or will be automatically executed when Gi
 ### Build and Run
 - Generate the website:
   ```bash
-  uv run main.py  # Takes 10-60 seconds depending on number of songbooks. NEVER CANCEL.
+  uv run build.py  # Takes 10-60 seconds depending on number of songbooks. NEVER CANCEL.
   ```
 - The generated site will be available in the `public/` directory
 - View locally by serving the `public/` directory:
@@ -61,7 +61,7 @@ The workflow can be triggered manually or will be automatically executed when Gi
 ### Build Timing Expectations
 - **Copilot Setup Workflow**: ~3 minutes (automated setup of dependencies and environment)
 - `uv sync`: ~30 seconds (downloads Python + dependencies, automated via workflow)
-- `uv run main.py`: 10-60 seconds (depends on number of songbooks to process)
+- `uv run build.py`: 10-60 seconds (depends on number of songbooks to process)
 - NEVER CANCEL builds or long-running commands. Network operations may take time.
 
 ## Troubleshooting
@@ -84,7 +84,7 @@ The workflow can be triggered manually or will be automatically executed when Gi
 ```
 .
 ├── README.md              # Project documentation
-├── main.py               # Main application script
+├── build.py               # Main application script
 ├── pyproject.toml        # Python dependencies
 ├── uv.lock              # Dependency lock file
 ├── .python-version      # Python version (3.10)
@@ -100,21 +100,21 @@ The workflow can be triggered manually or will be automatically executed when Gi
 │   └── workflows/
 │       ├── deploy.yml           # GitHub Actions deployment
 │       └── copilot-setup-steps.yml    # GitHub Copilot setup automation
-└── public/              # Generated output (created by main.py)
+└── public/              # Generated output (created by build.py)
     ├── index.html
     ├── assets/          # Copied from source assets/
     └── previews/        # Generated PDF preview images
 ```
 
 ### Key Files to Modify
-- `main.py`: Core application logic (PDF processing, template rendering)
+- `build.py`: Core application logic (PDF processing, template rendering)
 - `templates/index.html.j2`: HTML template for the website
 - `assets/style.css`: Website styling
 - `.github/workflows/deploy.yml`: Deployment configuration
 
 ### Development Workflow
 1. Make changes to Python code or templates
-2. Run `uv run main.py` to test generation locally
+2. Run `uv run build.py` to test generation locally
 3. Serve `public/` directory to test in browser
 4. Validate changes work with both real and mock data
 5. Test that the build process completes without errors
@@ -122,7 +122,7 @@ The workflow can be triggered manually or will be automatically executed when Gi
 ### CI/CD Process
 - GitHub Actions runs every 10 minutes (schedule) and on push to main
 - Checks for changes in GCS bucket before running build
-- Uses `uv sync` and `uv run main.py` to generate site
+- Uses `uv sync` and `uv run build.py` to generate site
 - Deploys to GitHub Pages automatically
 - Build artifacts are in the `public/` directory
 
@@ -147,7 +147,7 @@ The workflow can be triggered manually or will be automatically executed when Gi
 When making changes, ALWAYS verify:
 - [ ] `uv sync` completes successfully
 - [ ] `export GCS_BUCKET="ukulele-tuesday-songbooks"` is set
-- [ ] `uv run main.py` runs without Python errors (may fail on network)
+- [ ] `uv run build.py` runs without Python errors (may fail on network)
 - [ ] `public/` directory is created with correct structure
 - [ ] `public/index.html` contains valid HTML
 - [ ] `public/assets/` directory contains all static files

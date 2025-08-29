@@ -24,7 +24,7 @@ def get_manifest(bucket_name):
     return json.loads(manifest_data)
 
 def get_buymeacoffee_stats():
-    """Fetch supporter statistics from Buy Me a Coffee API."""
+    """Fetch supporter statistics from Buy Me a Coffee API with pagination."""
     # Fallback values in case API fails
     fallback_stats = {
         'total_amount': 912,
@@ -39,48 +39,76 @@ def get_buymeacoffee_stats():
         return fallback_stats
     
     try:
-        # Make API request to Buy Me a Coffee
+        # Make API request to Buy Me a Coffee with pagination
         headers = {
             'Authorization': f'Bearer {api_token}',
             'Content-Type': 'application/json'
         }
         
-        response = requests.get(
-            'https://developers.buymeacoffee.com/api/v1/supporters',
-            headers=headers,
-            timeout=10
-        )
+        all_supporters = []
+        page = 1
+        page_size = 50  # Larger page size to get more results per request
         
-        if response.status_code == 200:
+        while True:
+            params = {
+                'page': page,
+                'per_page': page_size
+            }
+            
+            response = requests.get(
+                'https://developers.buymeacoffee.com/api/v1/supporters',
+                headers=headers,
+                params=params,
+                timeout=10
+            )
+            
+            if response.status_code != 200:
+                print(f"  Buy Me a Coffee API returned status {response.status_code} on page {page}, using fallback values")
+                return fallback_stats
+            
             data = response.json()
             supporters = data.get('data', [])
             
-            # Calculate totals
-            total_amount = 0
-            supporter_count = len(supporters)
+            if not supporters:
+                # No more supporters to fetch
+                break
+                
+            all_supporters.extend(supporters)
             
-            for supporter in supporters:
-                # The amount is typically in the smallest currency unit (cents)
-                # Convert API response values to numbers to handle string responses
-                try:
-                    coffees = float(supporter.get('support_coffees', 0))
-                    price = float(supporter.get('support_coffee_price', 3))
-                    amount = coffees * price
-                    total_amount += amount
-                except (ValueError, TypeError):
-                    # Skip this supporter if values can't be converted to numbers
-                    continue
+            # Check if we've reached the last page
+            # Many APIs return fewer results than requested when at the last page
+            if len(supporters) < page_size:
+                break
+                
+            page += 1
             
-            print(f"  Fetched Buy Me a Coffee stats: €{total_amount} from {supporter_count} supporters")
-            
-            return {
-                'total_amount': int(total_amount),
-                'supporter_count': supporter_count,
-                'currency': '€'
-            }
-        else:
-            print(f"  Buy Me a Coffee API returned status {response.status_code}, using fallback values")
-            return fallback_stats
+            # Safety break to avoid infinite loops
+            if page > 100:
+                print(f"  Warning: Stopped at page {page} to avoid infinite loop")
+                break
+        
+        # Calculate totals from all supporters
+        total_amount = 0
+        supporter_count = len(all_supporters)
+        
+        for supporter in all_supporters:
+            # Convert API response values to numbers to handle string responses
+            try:
+                coffees = float(supporter.get('support_coffees', 0))
+                price = float(supporter.get('support_coffee_price', 3))
+                amount = coffees * price
+                total_amount += amount
+            except (ValueError, TypeError):
+                # Skip this supporter if values can't be converted to numbers
+                continue
+        
+        print(f"  Fetched Buy Me a Coffee stats: €{total_amount} from {supporter_count} supporters ({page-1} pages)")
+        
+        return {
+            'total_amount': int(total_amount),
+            'supporter_count': supporter_count,
+            'currency': '€'
+        }
             
     except requests.RequestException as e:
         print(f"  Error fetching Buy Me a Coffee stats: {e}, using fallback values")
