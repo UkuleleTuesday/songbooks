@@ -67,7 +67,9 @@ def test_get_buymeacoffee_stats_pagination(requests_mock):
         'data': [
             {'support_coffees': '5', 'support_coffee_price': '3'},
             {'support_coffees': '2', 'support_coffee_price': '5'},
-        ] * 25  # 50 supporters total (25 * 2)
+        ] * 25,  # 50 supporters total (25 * 2)
+        'last_page': 2,
+        'next_page_url': f'{base_url}?page=2'
     }
     requests_mock.get(
         f'{base_url}?page=1&per_page=50',
@@ -80,7 +82,9 @@ def test_get_buymeacoffee_stats_pagination(requests_mock):
         'data': [
             {'support_coffees': '10', 'support_coffee_price': '3'},
             {'support_coffees': '1', 'support_coffee_price': '4'},
-        ]
+        ],
+        'last_page': 2,
+        'next_page_url': None
     }
     requests_mock.get(
         f'{base_url}?page=2&per_page=50',
