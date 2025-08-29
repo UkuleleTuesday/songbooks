@@ -46,7 +46,7 @@ def get_buymeacoffee_stats():
         }
         
         all_supporters = []
-        page = 1
+        page = 0
         page_size = 50  # Larger page size to get more results per request
         
         while True:
@@ -67,6 +67,7 @@ def get_buymeacoffee_stats():
                 return fallback_stats
             
             data = response.json()
+            print(data)
             supporters = data.get('data', [])
             
             if not supporters:
