@@ -1,9 +1,13 @@
-# Simple workflow for deploying static content to GitHub Pages
-name: Deploy static content to Pages
+# Build and deploy website - builds on PRs, deploys on main branch
+name: Build and Deploy
 
 on:
   # Runs on pushes targeting the default branch
   push:
+    branches: ["main"]
+
+  # Runs on pull requests to main branch
+  pull_request:
     branches: ["main"]
 
   # Allows you to run this workflow manually from the Actions tab
@@ -13,16 +17,18 @@ on:
   schedule:
     - cron: '*/10 * * * *'
 
-# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+# Sets permissions of the GITHUB_TOKEN
 permissions:
   contents: read
+  # Additional permissions only needed for deployment
   pages: write
   id-token: write
 
 # Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
 # However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+# PRs can run concurrently since they don't deploy
 concurrency:
-  group: "pages"
+  group: ${{ github.event_name == 'pull_request' && format('build-pr-{0}', github.event.number) || 'pages' }}
   cancel-in-progress: false
 
 jobs:
@@ -43,6 +49,12 @@ jobs:
         id: check
         run: |
           set -x
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "Build triggered by pull request. Always proceeding for PR validation."
+            echo "changes_detected=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
           if [[ "${{ github.event_name }}" != "schedule" ]]; then
             echo "Build triggered by push or manual dispatch. Proceeding."
             echo "changes_detected=true" >> $GITHUB_OUTPUT
@@ -80,13 +92,10 @@ jobs:
             echo "changes_detected=false" >> $GITHUB_OUTPUT
           fi
 
-  # Build and deploy job
-  deploy:
+  # Build job - runs on all triggers including PRs
+  build:
     if: needs.check-for-changes.outputs.changes_detected == 'true'
     needs: check-for-changes
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     env:
       GCS_BUCKET: ukulele-tuesday-songbooks
@@ -104,13 +113,33 @@ jobs:
       - name: Generate website
         run: uv run main.py
 
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-      - name: Upload artifact
+      - name: Upload build artifact for potential deployment
+        if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v3
         with:
           # Upload public directory
           path: 'public'
+
+      - name: Upload build artifact for PR validation
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-site
+          path: 'public'
+          retention-days: 1
+
+  # Deploy job - only runs for non-PR triggers
+  deploy:
+    if: needs.build.result == 'success' && github.event_name != 'pull_request'
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+      
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
