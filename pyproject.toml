@@ -19,6 +19,6 @@ dev = [
 
 [tool.uv]
 dev-dependencies = [
-    "pytest>=8.4.1",
+    "pytest>=8.4.2",
     "requests-mock>=1.12.1",
 ]
