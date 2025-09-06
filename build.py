@@ -161,6 +161,7 @@ def render_index(file_list, last_updated=None, base_url=None, supporter_stats=No
         last_updated=last_updated,
         base_url=base_url,
         supporter_stats=supporter_stats,
+        site_title="Ukulele Tuesday Songbooks",
         site_description="Download the Ukulele Tuesday songbooks and play along with us every week."
     )
 
