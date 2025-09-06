@@ -1,0 +1,236 @@
+:root {
+      --primary-color: #0f8b81;
+      --accent-color: #EFCF56;
+      --text-color: #333;
+      --bg-color: #fdfdfd;
+      --container-width: 800px;
+      --heart-color: #e5398d;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      margin: 0;
+      padding: 2em 1em;
+      line-height: 1.6;
+      font-size: 16px;
+    }
+    .container {
+      max-width: var(--container-width);
+      margin: 0 auto;
+    }
+    header {
+      text-align: center;
+      margin-bottom: 2em;
+      padding: 1em;
+      background-color: var(--primary-color);
+      color: #fff;
+      border-radius: 8px;
+    }
+    h1 {
+      font-family: 'Pattaya', sans-serif;
+      font-weight: normal;
+      font-size: 3em;
+    }
+    header h1 {
+      margin-bottom: 0;
+      color: #fff;
+      line-height: 1.2;
+    }
+    header h2 {
+      font-size: 1.2em;
+      font-weight: normal;
+      color: rgba(255, 255, 255, 0.85);
+    }
+    .songbook-list {
+      list-style: none;
+      padding: 0;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1.5em;
+    }
+    .songbook-item a {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      text-decoration: none;
+      color: var(--text-color);
+      border-radius: 8px;
+      overflow: hidden;
+      background-color: #fff;
+      border: 1px solid #eee;
+      transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+    }
+    .songbook-item a:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+    }
+    .preview-container {
+      position: relative;
+    }
+    .download-icon {
+      position: absolute;
+      bottom: 12px;
+      right: 12px;
+      background-color: rgba(15, 139, 129, 0.9);
+      color: white;
+      border-radius: 50%;
+      width: 44px;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out;
+      transform: scale(0.9);
+      opacity: 0;
+    }
+    .songbook-item a:hover .download-icon {
+      opacity: 1;
+      transform: scale(1);
+    }
+    .download-icon svg {
+      width: 24px;
+      height: 24px;
+    }
+    /* Show icon on touch devices */
+    @media (hover: none) {
+      .download-icon {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+    .songbook-item img {
+      width: 100%;
+      height: auto;
+      display: block;
+      aspect-ratio: 1 / 1.414; /* A4 paper ratio */
+      object-fit: cover;
+      background-color: #f0f0f0;
+    }
+    .songbook-item .song-details {
+      padding: 0.8em 1em;
+      min-height: 4.5em; /* Provide enough space for multi-line titles/subtitles */
+    }
+    .songbook-item .title {
+      font-weight: bold;
+      margin-bottom: 0.25em;
+      text-align: center;
+      font-size: 1.05em;
+    }
+    .songbook-item .subtitle {
+      font-size: 0.9em;
+      color: #666;
+    }
+    footer {
+      margin-top: 2em;
+      padding: 1.5em 1em;
+      background-color: var(--primary-color);
+      color: #fff;
+      text-align: center;
+      border-radius: 8px;
+    }
+    footer .logo {
+      height: 60px;
+    }
+    footer .description,
+    footer .disclaimer,
+    footer .more-links {
+      font-size: 0.9em;
+      margin: 1.5em auto;
+      padding: 0 1em;
+      opacity: 0.9;
+      line-height: 1.5;
+    }
+    footer .disclaimer a,
+    footer .more-links a {
+      color: #fff;
+      text-decoration: underline;
+      font-weight: bold;
+    }
+    footer .disclaimer a:hover,
+    footer .more-links a:hover {
+      text-decoration: none;
+    }
+    .support-cta {
+      background-color: #1db1ad;
+      background-image: linear-gradient(to bottom, #1db1ad, #199894);
+      color: #fff;
+      border-radius: 8px;
+      padding: 28px 32px;
+      margin: 2em auto 0;
+      text-align: center;
+    }
+    .support-cta h1 {
+      margin-top: 8px;
+      margin-bottom: 0.5em;
+    }
+    .support-cta p {
+      margin-bottom: 1.5em;
+    }
+    .micro-proof {
+      font-size: 1.05em;
+      margin-bottom: 1.75em !important;
+    }
+    .cta-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5em;
+      background-color: var(--accent-color);
+      color: #254b48;
+      padding: 12px 24px;
+      border-radius: 5px;
+      text-decoration: none;
+      font-weight: bold;
+      transition: transform 150ms ease-in-out, box-shadow 150ms ease-in-out;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .cta-button:hover {
+      transform: scale(1.05);
+      box-shadow: 0 6px 16px rgba(0,0,0,0.15);
+    }
+    .cta-button:hover .heart-icon {
+      fill: var(--heart-color);
+      stroke: var(--heart-color);
+    }
+    footer .more-links a {
+      color: #fff;
+      text-decoration: underline;
+      transition: opacity 0.2s;
+    }
+    footer .more-links a:hover {
+      opacity: 0.8;
+    }
+    .heart-icon {
+      width: 1em;
+      height: 1em;
+      transition: fill 0.2s, stroke 0.2s;
+    }
+    footer .social-links {
+      display: flex;
+      justify-content: center;
+      gap: 1.5em;
+      margin-top: 1em;
+    }
+    footer .social-links a {
+      color: #fff;
+      transition: opacity 0.2s;
+    }
+    footer .social-links a:hover {
+      opacity: 0.8;
+    }
+    footer .social-links svg {
+      width: 28px;
+      height: 28px;
+    }
+    footer .last-updated {
+      margin: 1.5em auto 0;
+      font-size: 0.8em;
+      opacity: 0.8;
+      max-width: 70ch;
+      padding: 0 1em;
+    }
+    @media (max-width: 480px) {
+      .support-cta {
+        padding: 16px;
+      }
+    }
