@@ -6,9 +6,12 @@ on:
   push:
     branches: ["main"]
 
-  # Runs on pull requests to main branch
   pull_request:
-    branches: ["main"]
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - closed
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -19,10 +22,12 @@ on:
 
 # Sets permissions of the GITHUB_TOKEN
 permissions:
-  contents: read
+  contents: write
   # Additional permissions only needed for deployment
   pages: write
   id-token: write
+  # Additional permissions for PR preview deployments
+  pull-requests: write
 
 # Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
 # However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
@@ -115,33 +120,37 @@ jobs:
       - name: Generate website
         run: uv run build.py
 
-      - name: Upload build artifact for potential deployment
-        if: github.event_name != 'pull_request'
-        uses: actions/upload-pages-artifact@v3
-        with:
-          # Upload public directory
-          path: 'public'
-
-      - name: Upload build artifact for PR validation
-        if: github.event_name == 'pull_request'
+      - name: Upload build artifact for deployment
         uses: actions/upload-artifact@v4
         with:
-          name: generated-site
+          name: ${{ github.event_name == 'pull_request' && 'generated-site' || 'github-pages' }}
           path: 'public'
-          retention-days: 1
+          retention-days: ${{ github.event_name == 'pull_request' && '1' || '30' }}
 
-  # Deploy job - only runs for non-PR triggers
+  # Deploy job - deploys to main branch or creates PR preview
   deploy:
-    if: needs.build.result == 'success' && github.event_name != 'pull_request'
+    if: needs.build.result == 'success'
     needs: build
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-      
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ github.event_name == 'pull_request' && 'generated-site' || 'github-pages' }}
+          path: public
+
+      - name: Deploy to GitHub Pages (main branch only)
+        if: github.event_name != 'pull_request'
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: public
+          clean-exclude: pr-preview/
+
+      - name: Deploy PR Preview (PRs only)
+        if: github.event_name == 'pull_request'
+        uses: rossjrw/pr-preview-action@v1
+        with:
+          source-dir: public
