@@ -6,9 +6,12 @@ on:
   push:
     branches: ["main"]
 
-  # Runs on pull requests to main branch
   pull_request:
-    branches: ["main"]
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - closed
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -128,9 +131,6 @@ jobs:
   deploy:
     if: needs.build.result == 'success'
     needs: build
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
