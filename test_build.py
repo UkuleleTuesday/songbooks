@@ -204,6 +204,10 @@ def test_render_index(sample_files, sample_supporter_stats):
     assert '€500' in html
     assert '25 supporters' in html
     assert '<!DOCTYPE html' in html
+    
+    # Check that email link is replaced with contact form link
+    assert 'mailto:contact@ukuleletuesday.ie' not in html
+    assert 'https://www.ukuleletuesday.ie/contact-us/' in html
 
 def test_get_manifest(monkeypatch, mock_gcs_manifest):
     """Test manifest fetching from GCS."""
