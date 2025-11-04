@@ -252,6 +252,45 @@ def test_render_index_without_monthly_supporters(sample_files):
     # Check monthly supporters section is not present
     assert 'Special thanks to our monthly supporters:' not in html
 
+def test_get_buymeacoffee_stats_with_monthly_supporters(requests_mock):
+    """Test Buy Me a Coffee API response with monthly supporters."""
+    # Set environment variable for this test
+    os.environ['BUYMEACOFFEE_API_TOKEN'] = 'test-token'
+    
+    # Mock API response with monthly supporters
+    base_url = 'https://developers.buymeacoffee.com/api/v1/supporters'
+    mock_data = {
+        'data': [
+            # Monthly supporter with is_subscription_active
+            {'support_coffees': '5', 'support_coffee_price': '3', 'is_subscription_active': True, 'payer_name': 'Alice Smith'},
+            # Regular one-time supporter
+            {'support_coffees': '2', 'support_coffee_price': '3', 'payer_name': 'Bob Jones'},
+            # Monthly supporter with support_type
+            {'support_coffees': '1', 'support_coffee_price': '5', 'support_type': 'membership', 'supporter_name': 'Charlie Brown'},
+        ],
+        'last_page': 1,
+        'next_page_url': None
+    }
+    requests_mock.get(
+        f'{base_url}?page=1&per_page=10',
+        json=mock_data,
+        status_code=200
+    )
+    
+    try:
+        result = get_buymeacoffee_stats()
+        
+        # Verify monthly supporters are extracted
+        assert 'monthly_supporters' in result
+        assert len(result['monthly_supporters']) == 2
+        assert 'Alice Smith' in result['monthly_supporters']
+        assert 'Charlie Brown' in result['monthly_supporters']
+        assert 'Bob Jones' not in result['monthly_supporters']  # One-time supporter should not be included
+    finally:
+        # Clean up environment variable
+        if 'BUYMEACOFFEE_API_TOKEN' in os.environ:
+            del os.environ['BUYMEACOFFEE_API_TOKEN']
+
 def test_get_manifest(monkeypatch, mock_gcs_manifest):
     """Test manifest fetching from GCS."""
     from unittest.mock import MagicMock
