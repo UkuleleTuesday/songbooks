@@ -124,6 +124,84 @@ def get_buymeacoffee_stats():
         print(f"  Unexpected error with Buy Me a Coffee API: {e}, using fallback values")
         return fallback_stats
 
+def get_buymeacoffee_subscriptions():
+    """Fetch active monthly subscriptions from Buy Me a Coffee API with pagination."""
+    # Check if API token is available
+    api_token = os.environ.get('BUYMEACOFFEE_API_TOKEN')
+    if not api_token:
+        print("  No Buy Me a Coffee API token found, skipping monthly supporters")
+        return []
+
+    try:
+        # Make API request to Buy Me a Coffee subscriptions endpoint
+        headers = {
+            'Authorization': f'Bearer {api_token}',
+            'Content-Type': 'application/json'
+        }
+
+        all_subscriptions = []
+        page = 1
+        page_size = 50  # Larger page size to get more results per request
+
+        while True:
+            params = {
+                'page': page,
+                'per_page': page_size,
+                'status': 'active'
+            }
+
+            response = requests.get(
+                'https://developers.buymeacoffee.com/api/v1/subscriptions',
+                headers=headers,
+                params=params,
+                timeout=10
+            )
+
+            if response.status_code != 200:
+                print(f"  Buy Me a Coffee subscriptions API returned status {response.status_code} on page {page}, skipping monthly supporters")
+                return []
+
+            data = response.json()
+
+            print(f"  Fetching subscriptions page {page}...")
+
+            subscriptions = data.get('data', [])
+
+            if not subscriptions:
+                # No more subscriptions to fetch
+                break
+
+            all_subscriptions.extend(subscriptions)
+
+            # Check if we've reached the last page
+            if data.get('next_page_url') is None:
+                break
+
+            page += 1
+
+            # Safety break to avoid infinite loops
+            if page > 100:
+                print(f"  Warning: Stopped at page {page} to avoid infinite loop")
+                break
+
+        # Extract supporter names from subscriptions
+        supporter_names = []
+        for sub in all_subscriptions:
+            name = sub.get('payer_name', '').strip()
+            if name:
+                supporter_names.append(name)
+
+        print(f"  Fetched {len(supporter_names)} monthly supporters from Buy Me a Coffee")
+
+        return supporter_names
+
+    except requests.RequestException as e:
+        print(f"  Error fetching Buy Me a Coffee subscriptions: {e}, skipping monthly supporters")
+        return []
+    except Exception as e:
+        print(f"  Unexpected error with Buy Me a Coffee subscriptions API: {e}, skipping monthly supporters")
+        return []
+
 def download_pdf_from_url(url):
     """Downloads a PDF from a URL and returns the bytes."""
     from urllib.request import urlopen
@@ -152,7 +230,7 @@ def process_pdf_url(edition_name, pdf_url, preview_path):
 
     return {'title': title, 'subject': subject}
 
-def render_index(file_list, last_updated=None, base_url=None, supporter_stats=None):
+def render_index(file_list, last_updated=None, base_url=None, supporter_stats=None, monthly_supporters=None):
     """Renders the HTML index page."""
     env = Environment(loader=FileSystemLoader(TEMPLATE_DIR), autoescape=True)
     tmpl = env.get_template(TEMPLATE_FILE)
@@ -161,6 +239,7 @@ def render_index(file_list, last_updated=None, base_url=None, supporter_stats=No
         last_updated=last_updated,
         base_url=base_url,
         supporter_stats=supporter_stats,
+        monthly_supporters=monthly_supporters or [],
         site_title="Ukulele Tuesday Songbooks",
         site_description="Download the Ukulele Tuesday songbooks and play along with us every week."
     )
@@ -191,6 +270,10 @@ if __name__ == '__main__':
     # Fetch Buy Me a Coffee supporter statistics
     print("Fetching Buy Me a Coffee supporter statistics...")
     supporter_stats = get_buymeacoffee_stats()
+    
+    # Fetch Buy Me a Coffee monthly subscriptions
+    print("Fetching Buy Me a Coffee monthly supporters...")
+    monthly_supporters = get_buymeacoffee_subscriptions()
 
     for edition_name, edition_info in manifest['editions'].items():
         preview_filename = f"{edition_name}.png"
@@ -205,6 +288,6 @@ if __name__ == '__main__':
             'preview_image': f'previews/{preview_filename}'
         })
 
-    html = render_index(songbooks, last_updated=last_updated, base_url=BASE_URL, supporter_stats=supporter_stats)
+    html = render_index(songbooks, last_updated=last_updated, base_url=BASE_URL, supporter_stats=supporter_stats, monthly_supporters=monthly_supporters)
     write_output(html)
     print(f"Generated {len(songbooks)} songbooks → {OUTPUT_DIR}/index.html")
