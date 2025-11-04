@@ -209,6 +209,49 @@ def test_render_index(sample_files, sample_supporter_stats):
     assert 'mailto:contact@ukuleletuesday.ie' not in html
     assert 'https://www.ukuleletuesday.ie/contact-us/' in html
 
+def test_render_index_with_monthly_supporters(sample_files):
+    """Test HTML template rendering with monthly supporters."""
+    supporter_stats = {
+        'total_amount': 500,
+        'supporter_count': 25,
+        'currency': '€',
+        'monthly_supporters': ['Alice Smith', 'Bob Jones', 'Charlie Brown']
+    }
+    
+    # Render template
+    html = render_index(
+        sample_files, 
+        last_updated='2024-01-01T12:00:00Z',
+        base_url='https://test.example.com',
+        supporter_stats=supporter_stats
+    )
+    
+    # Check monthly supporters section is present
+    assert 'Special thanks to our monthly supporters:' in html
+    assert 'Alice Smith' in html
+    assert 'Bob Jones' in html
+    assert 'Charlie Brown' in html
+
+def test_render_index_without_monthly_supporters(sample_files):
+    """Test HTML template rendering without monthly supporters."""
+    supporter_stats = {
+        'total_amount': 500,
+        'supporter_count': 25,
+        'currency': '€',
+        'monthly_supporters': []
+    }
+    
+    # Render template
+    html = render_index(
+        sample_files, 
+        last_updated='2024-01-01T12:00:00Z',
+        base_url='https://test.example.com',
+        supporter_stats=supporter_stats
+    )
+    
+    # Check monthly supporters section is not present
+    assert 'Special thanks to our monthly supporters:' not in html
+
 def test_get_manifest(monkeypatch, mock_gcs_manifest):
     """Test manifest fetching from GCS."""
     from unittest.mock import MagicMock

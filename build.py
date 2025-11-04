@@ -29,7 +29,8 @@ def get_buymeacoffee_stats():
     fallback_stats = {
         'total_amount': 912,
         'supporter_count': 61,
-        'currency': '€'
+        'currency': '€',
+        'monthly_supporters': []
     }
 
     # Check if API token is available
@@ -94,9 +95,10 @@ def get_buymeacoffee_stats():
                 print(f"  Warning: Stopped at page {page} to avoid infinite loop")
                 break
 
-        # Calculate totals from all supporters
+        # Calculate totals from all supporters and extract monthly supporters
         total_amount = 0
         supporter_count = len(all_supporters)
+        monthly_supporters = []
 
         for supporter in all_supporters:
             # Convert API response values to numbers to handle string responses
@@ -108,13 +110,35 @@ def get_buymeacoffee_stats():
             except (ValueError, TypeError):
                 # Skip this supporter if values can't be converted to numbers
                 continue
+            
+            # Check if this is a monthly supporter (membership)
+            # Common fields that indicate recurring support:
+            # - is_subscription_active or subscription_active
+            # - support_type == 'membership' or 'subscription'
+            # - is_monthly or monthly
+            is_monthly = (
+                supporter.get('is_subscription_active') or
+                supporter.get('subscription_active') or
+                supporter.get('support_type') == 'membership' or
+                supporter.get('support_type') == 'subscription' or
+                supporter.get('is_monthly') or
+                supporter.get('monthly')
+            )
+            
+            if is_monthly:
+                # Extract supporter name
+                name = supporter.get('payer_name') or supporter.get('supporter_name') or supporter.get('payer_email', 'Anonymous')
+                if name and name not in monthly_supporters:
+                    monthly_supporters.append(name)
 
         print(f"  Fetched Buy Me a Coffee stats: €{int(total_amount)} from {supporter_count} supporters ({page} pages)")
+        print(f"  Found {len(monthly_supporters)} monthly supporters")
 
         return {
             'total_amount': int(total_amount),
             'supporter_count': supporter_count,
-            'currency': '€'
+            'currency': '€',
+            'monthly_supporters': monthly_supporters
         }
 
     except requests.RequestException as e:
