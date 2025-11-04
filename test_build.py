@@ -336,6 +336,7 @@ def test_get_buymeacoffee_subscriptions_empty_names(requests_mock):
             {'payer_name': 'Valid Name', 'subscription_is_cancelled': None},
             {'payer_name': '', 'subscription_is_cancelled': None},
             {'payer_name': '   ', 'subscription_is_cancelled': None},
+            {'payer_name': None, 'subscription_is_cancelled': None},  # None value
             {'subscription_is_cancelled': None},  # No payer_name field
         ],
         'next_page_url': None

@@ -187,7 +187,7 @@ def get_buymeacoffee_subscriptions():
         # Extract supporter names from subscriptions
         supporter_names = []
         for sub in all_subscriptions:
-            name = sub.get('payer_name', '').strip()
+            name = (sub.get('payer_name') or '').strip()
             if name:
                 supporter_names.append(name)
 
