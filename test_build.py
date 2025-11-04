@@ -7,7 +7,7 @@ import pytest
 import requests_mock
 
 # Import functions from build.py for testing
-from build import get_buymeacoffee_stats, render_index, get_manifest
+from build import get_buymeacoffee_stats, get_buymeacoffee_subscriptions, render_index, get_manifest
 
 
 @pytest.fixture
@@ -235,6 +235,161 @@ def test_get_manifest(monkeypatch, mock_gcs_manifest):
     # Verify
     assert manifest['last_updated_utc'] == '2024-01-01T12:00:00Z'
     assert 'test-edition' in manifest['editions']
+
+def test_get_buymeacoffee_subscriptions_pagination(requests_mock):
+    """Test Buy Me a Coffee subscriptions API pagination."""
+    # Set environment variable for this test
+    os.environ['BUYMEACOFFEE_API_TOKEN'] = 'test-token'
+    
+    # Mock API responses for multiple pages
+    base_url = 'https://developers.buymeacoffee.com/api/v1/subscriptions'
+    
+    # Page 1 - full page
+    page1_data = {
+        'data': [
+            {'payer_name': 'John Doe', 'subscription_is_cancelled': None},
+            {'payer_name': 'Jane Smith', 'subscription_is_cancelled': None},
+            {'payer_name': 'Bob Wilson', 'subscription_is_cancelled': None},
+        ],
+        'last_page': 2,
+        'next_page_url': f'{base_url}?page=2'
+    }
+    requests_mock.get(
+        f'{base_url}?page=1&per_page=50&status=active',
+        json=page1_data,
+        status_code=200
+    )
+    
+    # Page 2 - partial page
+    page2_data = {
+        'data': [
+            {'payer_name': 'Alice Brown', 'subscription_is_cancelled': None},
+        ],
+        'last_page': 2,
+        'next_page_url': None
+    }
+    requests_mock.get(
+        f'{base_url}?page=2&per_page=50&status=active',
+        json=page2_data,
+        status_code=200
+    )
+    
+    try:
+        result = get_buymeacoffee_subscriptions()
+        
+        # Verify pagination worked
+        assert len(requests_mock.request_history) == 2
+        
+        # Verify all names are present
+        assert len(result) == 4
+        assert 'John Doe' in result
+        assert 'Jane Smith' in result
+        assert 'Bob Wilson' in result
+        assert 'Alice Brown' in result
+    finally:
+        # Clean up environment variable
+        if 'BUYMEACOFFEE_API_TOKEN' in os.environ:
+            del os.environ['BUYMEACOFFEE_API_TOKEN']
+
+def test_get_buymeacoffee_subscriptions_no_token():
+    """Test subscriptions API when no API token is provided."""
+    # Ensure no token is set
+    if 'BUYMEACOFFEE_API_TOKEN' in os.environ:
+        del os.environ['BUYMEACOFFEE_API_TOKEN']
+    
+    result = get_buymeacoffee_subscriptions()
+    
+    # Should return empty list
+    assert result == []
+
+def test_get_buymeacoffee_subscriptions_api_error(requests_mock):
+    """Test subscriptions API error handling."""
+    # Set environment variable for this test
+    os.environ['BUYMEACOFFEE_API_TOKEN'] = 'test-token'
+    
+    # Mock API to raise an exception
+    base_url = 'https://developers.buymeacoffee.com/api/v1/subscriptions'
+    requests_mock.get(
+        f'{base_url}?page=1&per_page=50&status=active',
+        exc=Exception("Network error")
+    )
+    
+    try:
+        result = get_buymeacoffee_subscriptions()
+        
+        # Should return empty list
+        assert result == []
+    finally:
+        # Clean up environment variable
+        if 'BUYMEACOFFEE_API_TOKEN' in os.environ:
+            del os.environ['BUYMEACOFFEE_API_TOKEN']
+
+def test_get_buymeacoffee_subscriptions_empty_names(requests_mock):
+    """Test subscriptions API with empty names."""
+    # Set environment variable for this test
+    os.environ['BUYMEACOFFEE_API_TOKEN'] = 'test-token'
+    
+    # Mock API response with empty and valid names
+    base_url = 'https://developers.buymeacoffee.com/api/v1/subscriptions'
+    test_data = {
+        'data': [
+            {'payer_name': 'Valid Name', 'subscription_is_cancelled': None},
+            {'payer_name': '', 'subscription_is_cancelled': None},
+            {'payer_name': '   ', 'subscription_is_cancelled': None},
+            {'payer_name': None, 'subscription_is_cancelled': None},  # None value
+            {'subscription_is_cancelled': None},  # No payer_name field
+        ],
+        'next_page_url': None
+    }
+    requests_mock.get(
+        f'{base_url}?page=1&per_page=50&status=active',
+        json=test_data,
+        status_code=200
+    )
+    
+    try:
+        result = get_buymeacoffee_subscriptions()
+        
+        # Should only include valid name
+        assert len(result) == 1
+        assert result[0] == 'Valid Name'
+    finally:
+        # Clean up environment variable
+        if 'BUYMEACOFFEE_API_TOKEN' in os.environ:
+            del os.environ['BUYMEACOFFEE_API_TOKEN']
+
+def test_render_index_with_monthly_supporters(sample_files, sample_supporter_stats):
+    """Test HTML template rendering with monthly supporters."""
+    monthly_supporters = ['John Doe', 'Jane Smith', 'Bob Wilson']
+    
+    # Render template
+    html = render_index(
+        sample_files, 
+        last_updated='2024-01-01T12:00:00Z',
+        base_url='https://test.example.com',
+        supporter_stats=sample_supporter_stats,
+        monthly_supporters=monthly_supporters
+    )
+    
+    # Check that monthly supporters section is present
+    assert 'Special thanks to our monthly supporters:' in html
+    assert 'John Doe' in html
+    assert 'Jane Smith' in html
+    assert 'Bob Wilson' in html
+
+def test_render_index_without_monthly_supporters(sample_files, sample_supporter_stats):
+    """Test HTML template rendering without monthly supporters."""
+    # Render template with empty list
+    html = render_index(
+        sample_files, 
+        last_updated='2024-01-01T12:00:00Z',
+        base_url='https://test.example.com',
+        supporter_stats=sample_supporter_stats,
+        monthly_supporters=[]
+    )
+    
+    # Monthly supporters section should not be present
+    assert 'Special thanks to our monthly supporters:' not in html
 
 
 if __name__ == '__main__':
