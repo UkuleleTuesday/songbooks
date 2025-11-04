@@ -76,14 +76,21 @@
     <div class="support-cta">
       <h1>Support Ukulele Tuesday</h1>
       <p>Enjoy our free songbooks? Pitch in <strong>€3</strong> to help us keep them free and fresh each week!</p>
-      <p class="micro-proof">🎉 <strong>{% if supporter_stats %}{{ supporter_stats.currency }}{{ supporter_stats.total_amount }} raised from {{ supporter_stats.supporter_count }} supporters so far. Thank you!{% else %}€912 raised from 61 supporters so far. Thank you!{% endif %}</strong></p>
-      {% if monthly_supporters and monthly_supporters|length > 0 %}
-      <p class="monthly-supporters"><strong>Special thanks to our monthly supporters:</strong> {{ monthly_supporters|join(', ') }}</p>
-      {% endif %}
       <a href="https://buymeacoffee.com/ukuleletuesday" class="cta-button" target="_blank" rel="noopener noreferrer" onclick="mixpanel.track('Buy us a Coffee Button Click');">
         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="heart-icon"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
         Buy Us a Coffee
       </a>
+      <p class="micro-proof">🎉 <strong>{% if supporter_stats %}{{ supporter_stats.currency }}{{ supporter_stats.total_amount }} raised from {{ supporter_stats.supporter_count }} supporters so far. Thank you!{% else %}€912 raised from 61 supporters so far. Thank you!{% endif %}</strong></p>
+      {% if monthly_supporters and monthly_supporters|length > 0 %}
+      <div class="monthly-supporters">
+        <p class="monthly-supporters-heading"><strong>Special thanks to our monthly supporters:</strong></p>
+        <ul class="supporters-list">
+        {% for supporter in monthly_supporters %}
+          <li class="supporter-name">{{ supporter }}</li>
+        {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
     </div>
     
     <footer>
