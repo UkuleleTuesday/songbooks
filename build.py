@@ -47,7 +47,7 @@ def get_buymeacoffee_stats():
 
         all_supporters = []
         page = 1
-        page_size = 10  # Larger page size to get more results per request
+        page_size = 50  # Larger page size to get more results per request
         total_pages = 1  # Assume at least one page
 
         while True:
