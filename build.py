@@ -333,6 +333,7 @@ if __name__ == '__main__':
         metadata = process_pdf_url(edition_name, pdf_url, preview_path_abs)
 
         songbooks.append({
+            'edition_name': edition_name,
             'title': metadata['title'],
             'subject': metadata['subject'],
             'url': pdf_url,
@@ -344,3 +345,31 @@ if __name__ == '__main__':
     html = render_index(songbooks, last_updated=last_updated_iso, base_url=BASE_URL, supporter_stats=supporter_stats, monthly_supporters=monthly_supporters)
     write_output(html)
     print(f"Generated {len(songbooks)} songbooks → {OUTPUT_DIR}/index.html")
+
+    # Generate redirects for each edition
+    print("Generating redirects for each edition...")
+    redirect_count = 0
+    for songbook in songbooks:
+        redirect_dir = os.path.join(OUTPUT_DIR, songbook['edition_name'])
+        os.makedirs(redirect_dir, exist_ok=True)
+
+        # Create a simple HTML file with a meta refresh tag for redirection
+        redirect_html = f"""<!DOCTYPE html>
+<html>
+<head>
+<title>Redirecting to {songbook['title']}</title>
+<link rel="canonical" href="{songbook['url']}" />
+<meta http-equiv="refresh" content="0; url={songbook['url']}">
+<script>window.location.replace("{songbook['url']}");</script>
+</head>
+<body>
+<p>If you are not redirected, <a href="{songbook['url']}">click here to view the songbook</a>.</p>
+</body>
+</html>"""
+        
+        with open(os.path.join(redirect_dir, 'index.html'), 'w', encoding='utf-8') as f:
+            f.write(redirect_html)
+        redirect_count += 1
+    
+    if redirect_count > 0:
+        print(f"Generated {redirect_count} redirects.")
