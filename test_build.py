@@ -6,8 +6,11 @@ import json
 import pytest
 import requests_mock
 
+import yaml
+from unittest.mock import MagicMock
+
 # Import functions from build.py for testing
-from build import get_buymeacoffee_stats, get_buymeacoffee_subscriptions, render_index, get_manifest
+from build import get_buymeacoffee_stats, get_buymeacoffee_subscriptions, render_index, get_editions_config, get_latest_edition_info, get_edition_manifest
 
 
 @pytest.fixture
@@ -19,17 +22,6 @@ def test_env():
     }
 
 
-@pytest.fixture
-def mock_gcs_manifest():
-    """Mock GCS manifest data fixture."""
-    return {
-        'last_updated_utc': '2024-01-01T12:00:00Z',
-        'editions': {
-            'test-edition': {
-                'url': 'https://example.com/test.pdf'
-            }
-        }
-    }
 
 
 @pytest.fixture
@@ -209,32 +201,58 @@ def test_render_index(sample_files, sample_supporter_stats):
     assert 'mailto:contact@ukuleletuesday.ie' not in html
     assert 'https://www.ukuleletuesday.ie/contact-us/' in html
 
-def test_get_manifest(monkeypatch, mock_gcs_manifest):
-    """Test manifest fetching from GCS."""
-    from unittest.mock import MagicMock
-    
-    # Mock GCS client and bucket
-    mock_blob = MagicMock()
-    mock_blob.download_as_text.return_value = json.dumps(mock_gcs_manifest)
-    
+def test_get_editions_config(monkeypatch):
+    """Test reading the editions YAML config."""
+    mock_yaml_content = {
+        'editions': ['current', 'complete']
+    }
+    # Use monkeypatch to mock open() and yaml.safe_load()
+    monkeypatch.setattr('builtins.open', lambda *args, **kwargs: MagicMock())
+    monkeypatch.setattr('build.yaml.safe_load', lambda *args: mock_yaml_content)
+
+    editions = get_editions_config()
+    assert editions == ['current', 'complete']
+
+def test_get_latest_edition_info():
+    """Test fetching and parsing latest.json from a mock GCS bucket."""
     mock_bucket = MagicMock()
+    mock_blob = MagicMock()
+    
+    # Mock successful fetch
+    latest_json_content = json.dumps({
+        "pdf_filename": "songbook-current.pdf",
+        "manifest_filename": "songbook-current.manifest.json"
+    })
+    mock_blob.download_as_text.return_value = latest_json_content
     mock_bucket.blob.return_value = mock_blob
     
-    mock_client_instance = MagicMock()
-    mock_client_instance.bucket.return_value = mock_bucket
+    info = get_latest_edition_info(mock_bucket, 'current')
+    assert info['pdf_filename'] == 'songbook-current.pdf'
     
-    mock_client_class = MagicMock()
-    mock_client_class.create_anonymous_client.return_value = mock_client_instance
-    
-    # Use monkeypatch to replace the storage.Client
-    monkeypatch.setattr('build.storage.Client', mock_client_class)
-    
-    # Test manifest loading
-    manifest = get_manifest('test-bucket')
-    
-    # Verify
-    assert manifest['last_updated_utc'] == '2024-01-01T12:00:00Z'
-    assert 'test-edition' in manifest['editions']
+    # Mock failed fetch (e.g., blob not found)
+    mock_blob.download_as_text.side_effect = Exception("Not Found")
+    info = get_latest_edition_info(mock_bucket, 'non-existent')
+    assert info is None
+
+def test_get_edition_manifest():
+    """Test fetching and parsing an edition's manifest."""
+    mock_bucket = MagicMock()
+    mock_blob = MagicMock()
+
+    # Mock successful fetch
+    manifest_content = json.dumps({
+        "generated_at": "2024-01-01T12:00:00Z"
+    })
+    mock_blob.download_as_text.return_value = manifest_content
+    mock_bucket.blob.return_value = mock_blob
+
+    manifest = get_edition_manifest(mock_bucket, 'current', 'manifest.json')
+    assert manifest['generated_at'] == "2024-01-01T12:00:00Z"
+
+    # Mock failed fetch
+    mock_blob.download_as_text.side_effect = Exception("Not Found")
+    manifest = get_edition_manifest(mock_bucket, 'current', 'manifest.json')
+    assert manifest is None
 
 def test_get_buymeacoffee_subscriptions_pagination(requests_mock):
     """Test Buy Me a Coffee subscriptions API pagination."""

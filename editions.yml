@@ -1,0 +1,6 @@
+# List of songbook editions to display on the site.
+# The key for each item (e.g., "current") is used as the edition's unique identifier.
+editions:
+  - current
+  - complete
+  - wexford-2026
