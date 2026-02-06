@@ -2,6 +2,8 @@ import os
 import io
 import shutil
 import json
+import yaml
+from datetime import datetime, timezone
 import fitz  # PyMuPDF
 import requests
 from google.cloud import storage
@@ -14,14 +16,35 @@ OUTPUT_DIR = 'public'
 PREVIEW_DIR = os.path.join(OUTPUT_DIR, 'previews')
 TEMPLATE_DIR = 'templates'
 TEMPLATE_FILE = 'index.html.j2'
+EDITIONS_FILE = 'editions.yml'
 
-def get_manifest(bucket_name):
-    """Downloads and parses the manifest.json file from the bucket."""
-    client = storage.Client.create_anonymous_client()
-    bucket = client.bucket(bucket_name)
-    manifest_blob = bucket.blob('manifest.json')
-    manifest_data = manifest_blob.download_as_text()
-    return json.loads(manifest_data)
+def get_editions_config():
+    """Reads the local editions.yml file."""
+    with open(EDITIONS_FILE, 'r') as f:
+        config = yaml.safe_load(f)
+    return config.get('editions', [])
+
+def get_latest_edition_info(bucket, edition_name):
+    """Fetches and parses the latest.json for a given edition."""
+    blob_name = f"{edition_name}/latest.json"
+    blob = bucket.blob(blob_name)
+    try:
+        data = blob.download_as_text()
+        return json.loads(data)
+    except Exception as e:
+        print(f"  Could not fetch or parse {blob_name}: {e}")
+        return None
+
+def get_edition_manifest(bucket, edition_name, manifest_filename):
+    """Fetches and parses a specific edition's manifest file."""
+    blob_name = f"{edition_name}/{manifest_filename}"
+    blob = bucket.blob(blob_name)
+    try:
+        data = blob.download_as_text()
+        return json.loads(data)
+    except Exception as e:
+        print(f"  Could not fetch or parse manifest {blob_name}: {e}")
+        return None
 
 def get_buymeacoffee_stats():
     """Fetch supporter statistics from Buy Me a Coffee API with pagination."""
@@ -259,13 +282,14 @@ def write_output(html):
         shutil.copytree(assets_src, assets_dest)
 
 if __name__ == '__main__':
-    print(f"Fetching songbook manifest from GCS bucket: {BUCKET_NAME}")
-    manifest = get_manifest(BUCKET_NAME)
+    editions = get_editions_config()
+    print(f"Found {len(editions)} editions in {EDITIONS_FILE}")
     songbooks = []
+    
+    storage_client = storage.Client.create_anonymous_client()
+    bucket = storage_client.bucket(BUCKET_NAME)
 
     os.makedirs(PREVIEW_DIR, exist_ok=True)
-
-    last_updated = manifest.get('last_updated_utc')
 
     # Fetch Buy Me a Coffee supporter statistics
     print("Fetching Buy Me a Coffee supporter statistics...")
@@ -275,19 +299,48 @@ if __name__ == '__main__':
     print("Fetching Buy Me a Coffee monthly supporters...")
     monthly_supporters = get_buymeacoffee_subscriptions()
 
-    for edition_name, edition_info in manifest['editions'].items():
+    latest_update_time = None
+
+    for edition_name in editions:
+        print(f"Processing edition: {edition_name}")
+        latest_info = get_latest_edition_info(bucket, edition_name)
+
+        if not latest_info or 'pdf_filename' not in latest_info:
+            print(f"  Skipping '{edition_name}' due to missing info.")
+            continue
+            
+        if 'manifest_filename' in latest_info:
+            manifest = get_edition_manifest(bucket, edition_name, latest_info['manifest_filename'])
+            if manifest and 'generated_at' in manifest:
+                generated_at_str = manifest['generated_at']
+                try:
+                    # Parse the timestamp, handling potential timezone formats
+                    dt = datetime.fromisoformat(generated_at_str.replace('Z', '+00:00'))
+                    # Ensure timezone is set for comparison
+                    dt_utc = dt.astimezone(timezone.utc) if dt.tzinfo is None else dt
+                    
+                    if latest_update_time is None or dt_utc > latest_update_time:
+                        latest_update_time = dt_utc
+                except ValueError:
+                    print(f"  Could not parse timestamp: {generated_at_str}")
+
+        pdf_filename = latest_info['pdf_filename']
+        pdf_url = f"https://storage.googleapis.com/{BUCKET_NAME}/{edition_name}/{pdf_filename}"
+        
         preview_filename = f"{edition_name}.png"
         preview_path_abs = os.path.join(PREVIEW_DIR, preview_filename)
 
-        metadata = process_pdf_url(edition_name, edition_info['url'], preview_path_abs)
+        metadata = process_pdf_url(edition_name, pdf_url, preview_path_abs)
 
         songbooks.append({
             'title': metadata['title'],
             'subject': metadata['subject'],
-            'url': edition_info['url'],
-            'preview_image': f'previews/{preview_filename}'
+            'url': pdf_url,
+            'preview_image': f'previews/{preview_filename}',
+            'filename': pdf_filename,
         })
 
-    html = render_index(songbooks, last_updated=last_updated, base_url=BASE_URL, supporter_stats=supporter_stats, monthly_supporters=monthly_supporters)
+    last_updated_iso = latest_update_time.isoformat() if latest_update_time else None
+    html = render_index(songbooks, last_updated=last_updated_iso, base_url=BASE_URL, supporter_stats=supporter_stats, monthly_supporters=monthly_supporters)
     write_output(html)
     print(f"Generated {len(songbooks)} songbooks → {OUTPUT_DIR}/index.html")
