@@ -120,8 +120,8 @@ The workflow can be triggered manually or will be automatically executed when Gi
 5. Test that the build process completes without errors
 
 ### CI/CD Process
-- GitHub Actions runs every 10 minutes (schedule) and on push to main
-- Checks for changes in GCS bucket before running build
+- GitHub Actions runs every 15 minutes (at 2, 17, 32, and 47 minutes past each hour) and on push to main
+- Builds unconditionally on every scheduled run
 - Uses `uv sync` and `uv run build.py` to generate site
 - Deploys to GitHub Pages automatically
 - Build artifacts are in the `public/` directory
