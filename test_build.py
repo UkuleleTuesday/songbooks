@@ -410,5 +410,44 @@ def test_render_index_without_monthly_supporters(sample_files, sample_supporter_
     assert 'Special thanks to our monthly supporters:' not in html
 
 
+def test_verbose_output_get_latest_edition_info(capsys):
+    """Test that get_latest_edition_info prints verbose output."""
+    mock_bucket = MagicMock()
+    mock_bucket.name = 'test-bucket'
+    mock_blob = MagicMock()
+    
+    latest_json_content = json.dumps({
+        "pdf_filename": "songbook-current.pdf",
+        "manifest_filename": "songbook-current.manifest.json"
+    })
+    mock_blob.download_as_text.return_value = latest_json_content
+    mock_bucket.blob.return_value = mock_blob
+    
+    get_latest_edition_info(mock_bucket, 'current')
+    
+    captured = capsys.readouterr()
+    assert 'Fetching latest.json from:' in captured.out
+    assert 'https://storage.googleapis.com/test-bucket/current/latest.json' in captured.out
+
+
+def test_verbose_output_get_edition_manifest(capsys):
+    """Test that get_edition_manifest prints verbose output."""
+    mock_bucket = MagicMock()
+    mock_bucket.name = 'test-bucket'
+    mock_blob = MagicMock()
+
+    manifest_content = json.dumps({
+        "generated_at": "2024-01-01T12:00:00Z"
+    })
+    mock_blob.download_as_text.return_value = manifest_content
+    mock_bucket.blob.return_value = mock_blob
+
+    get_edition_manifest(mock_bucket, 'current', 'manifest.json')
+    
+    captured = capsys.readouterr()
+    assert 'Fetching manifest from:' in captured.out
+    assert 'https://storage.googleapis.com/test-bucket/current/manifest.json' in captured.out
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
