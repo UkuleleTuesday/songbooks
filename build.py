@@ -29,6 +29,8 @@ def get_latest_edition_info(bucket, edition_name):
     blob_name = f"{edition_name}/latest.json"
     blob = bucket.blob(blob_name)
     try:
+        latest_url = f"https://storage.googleapis.com/{bucket.name}/{blob_name}"
+        print(f"  Fetching latest.json from: {latest_url}")
         data = blob.download_as_text()
         return json.loads(data)
     except Exception as e:
@@ -40,6 +42,8 @@ def get_edition_manifest(bucket, edition_name, manifest_filename):
     blob_name = f"{edition_name}/{manifest_filename}"
     blob = bucket.blob(blob_name)
     try:
+        manifest_url = f"https://storage.googleapis.com/{bucket.name}/{blob_name}"
+        print(f"  Fetching manifest from: {manifest_url}")
         data = blob.download_as_text()
         return json.loads(data)
     except Exception as e:
@@ -326,6 +330,7 @@ if __name__ == '__main__':
 
         pdf_filename = latest_info['pdf_filename']
         pdf_url = f"https://storage.googleapis.com/{BUCKET_NAME}/{edition_name}/{pdf_filename}"
+        print(f"  Using PDF URL: {pdf_url}")
         
         preview_filename = f"{edition_name}.png"
         preview_path_abs = os.path.join(PREVIEW_DIR, preview_filename)
