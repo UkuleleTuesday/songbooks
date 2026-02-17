@@ -10,7 +10,7 @@ import yaml
 from unittest.mock import MagicMock
 
 # Import functions from build.py for testing
-from build import get_buymeacoffee_stats, get_buymeacoffee_subscriptions, render_index, get_editions_config, get_latest_edition_info, get_edition_manifest
+from build import get_buymeacoffee_stats, get_buymeacoffee_subscriptions, render_index, get_editions_config, get_latest_edition_info, get_edition_manifest, create_session_with_retry
 
 
 @pytest.fixture
@@ -447,6 +447,115 @@ def test_verbose_output_get_edition_manifest(capsys):
     captured = capsys.readouterr()
     assert 'Fetching manifest from:' in captured.out
     assert 'https://storage.googleapis.com/test-bucket/current/manifest.json' in captured.out
+
+
+def test_create_session_with_retry():
+    """Test that create_session_with_retry creates a properly configured session."""
+    session = create_session_with_retry(max_retries=3, backoff_factor=2)
+    
+    # Verify session has the right adapters
+    assert "https://" in session.adapters
+    assert "http://" in session.adapters
+    
+    # Verify the adapter is HTTPAdapter with retry config
+    adapter = session.adapters["https://"]
+    assert adapter.max_retries.total == 3
+    assert adapter.max_retries.backoff_factor == 2
+    assert 429 in adapter.max_retries.status_forcelist
+    assert adapter.max_retries.respect_retry_after_header is True
+    assert 'GET' in adapter.max_retries.allowed_methods
+    assert adapter.max_retries.raise_on_status is False
+
+
+def test_get_buymeacoffee_stats_success(requests_mock):
+    """Test successful API call for stats."""
+    os.environ['BUYMEACOFFEE_API_TOKEN'] = 'test-token'
+    
+    base_url = 'https://developers.buymeacoffee.com/api/v1/supporters'
+    
+    successful_data = {
+        'data': [
+            {'support_coffees': '5', 'support_coffee_price': '3'},
+        ],
+        'next_page_url': None
+    }
+    
+    requests_mock.get(base_url, json=successful_data, status_code=200)
+    
+    try:
+        result = get_buymeacoffee_stats()
+        
+        # Should succeed on first try
+        assert result['total_amount'] == 15  # 5 * 3
+        assert result['supporter_count'] == 1
+    finally:
+        if 'BUYMEACOFFEE_API_TOKEN' in os.environ:
+            del os.environ['BUYMEACOFFEE_API_TOKEN']
+
+
+def test_get_buymeacoffee_stats_fallback_on_error(requests_mock):
+    """Test that get_buymeacoffee_stats returns fallback after errors."""
+    os.environ['BUYMEACOFFEE_API_TOKEN'] = 'test-token'
+    
+    base_url = 'https://developers.buymeacoffee.com/api/v1/supporters'
+    
+    # Mock: API returns error
+    requests_mock.get(base_url, status_code=500)
+    
+    try:
+        result = get_buymeacoffee_stats()
+        
+        # Should return fallback values
+        assert result['total_amount'] == 912
+        assert result['supporter_count'] == 61
+    finally:
+        if 'BUYMEACOFFEE_API_TOKEN' in os.environ:
+            del os.environ['BUYMEACOFFEE_API_TOKEN']
+
+
+def test_get_buymeacoffee_subscriptions_success(requests_mock):
+    """Test successful API call for subscriptions."""
+    os.environ['BUYMEACOFFEE_API_TOKEN'] = 'test-token'
+    
+    base_url = 'https://developers.buymeacoffee.com/api/v1/subscriptions'
+    
+    successful_data = {
+        'data': [
+            {'payer_name': 'John Doe', 'subscription_is_cancelled': None},
+        ],
+        'next_page_url': None
+    }
+    
+    requests_mock.get(base_url, json=successful_data, status_code=200)
+    
+    try:
+        result = get_buymeacoffee_subscriptions()
+        
+        # Should succeed
+        assert len(result) == 1
+        assert 'John Doe' in result
+    finally:
+        if 'BUYMEACOFFEE_API_TOKEN' in os.environ:
+            del os.environ['BUYMEACOFFEE_API_TOKEN']
+
+
+def test_get_buymeacoffee_subscriptions_empty_on_error(requests_mock):
+    """Test that get_buymeacoffee_subscriptions returns empty after errors."""
+    os.environ['BUYMEACOFFEE_API_TOKEN'] = 'test-token'
+    
+    base_url = 'https://developers.buymeacoffee.com/api/v1/subscriptions'
+    
+    # Mock: API returns error
+    requests_mock.get(base_url, status_code=500)
+    
+    try:
+        result = get_buymeacoffee_subscriptions()
+        
+        # Should return empty list
+        assert result == []
+    finally:
+        if 'BUYMEACOFFEE_API_TOKEN' in os.environ:
+            del os.environ['BUYMEACOFFEE_API_TOKEN']
 
 
 if __name__ == '__main__':

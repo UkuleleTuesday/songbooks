@@ -6,6 +6,8 @@ import yaml
 from datetime import datetime, timezone
 import fitz  # PyMuPDF
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from google.cloud import storage
 from jinja2 import Environment, FileSystemLoader
 
@@ -17,6 +19,35 @@ PREVIEW_DIR = os.path.join(OUTPUT_DIR, 'previews')
 TEMPLATE_DIR = 'templates'
 TEMPLATE_FILE = 'index.html.j2'
 EDITIONS_FILE = 'editions.yml'
+
+def create_session_with_retry(max_retries=5, backoff_factor=1):
+    """
+    Creates a requests Session with retry configuration for 429 errors.
+    
+    Args:
+        max_retries: Maximum number of retry attempts for 429 errors
+        backoff_factor: Multiplier for exponential backoff (1 = 1s, 2s, 4s, 8s, 16s)
+        
+    Returns:
+        requests.Session configured with retry adapter
+    """
+    retry = Retry(
+        total=max_retries,
+        backoff_factor=backoff_factor,       # exponential backoff: 1s, 2s, 4s…
+        status_forcelist=[429],              # retry on rate limit
+        allowed_methods=['GET'],             # only retry GET requests
+        respect_retry_after_header=True,
+        raise_on_status=False,               # don't raise exceptions, return response
+    )
+    
+    adapter = HTTPAdapter(max_retries=retry)
+    
+    session = requests.Session()
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    
+    return session
+
 
 def get_editions_config():
     """Reads the local editions.yml file."""
@@ -66,6 +97,9 @@ def get_buymeacoffee_stats():
         return fallback_stats
 
     try:
+        # Create session with retry configuration
+        session = create_session_with_retry()
+        
         # Make API request to Buy Me a Coffee with pagination
         headers = {
             'Authorization': f'Bearer {api_token}',
@@ -83,7 +117,7 @@ def get_buymeacoffee_stats():
                 'per_page': page_size
             }
 
-            response = requests.get(
+            response = session.get(
                 'https://developers.buymeacoffee.com/api/v1/supporters',
                 headers=headers,
                 params=params,
@@ -160,6 +194,9 @@ def get_buymeacoffee_subscriptions():
         return []
 
     try:
+        # Create session with retry configuration
+        session = create_session_with_retry()
+        
         # Make API request to Buy Me a Coffee subscriptions endpoint
         headers = {
             'Authorization': f'Bearer {api_token}',
@@ -177,7 +214,7 @@ def get_buymeacoffee_subscriptions():
                 'status': 'active'
             }
 
-            response = requests.get(
+            response = session.get(
                 'https://developers.buymeacoffee.com/api/v1/subscriptions',
                 headers=headers,
                 params=params,
