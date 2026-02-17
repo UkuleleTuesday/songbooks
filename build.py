@@ -3,6 +3,7 @@ import io
 import shutil
 import json
 import yaml
+import time
 from datetime import datetime, timezone
 import fitz  # PyMuPDF
 import requests
@@ -17,6 +18,55 @@ PREVIEW_DIR = os.path.join(OUTPUT_DIR, 'previews')
 TEMPLATE_DIR = 'templates'
 TEMPLATE_FILE = 'index.html.j2'
 EDITIONS_FILE = 'editions.yml'
+
+def request_with_backoff(url, headers=None, params=None, timeout=10, max_retries=5):
+    """
+    Makes an HTTP GET request with exponential backoff for 429 errors.
+    
+    Args:
+        url: The URL to request
+        headers: Optional headers dict
+        params: Optional query parameters dict
+        timeout: Request timeout in seconds
+        max_retries: Maximum number of retry attempts for 429 errors
+        
+    Returns:
+        requests.Response object
+        
+    Raises:
+        requests.RequestException: If request fails after all retries
+    """
+    retry_count = 0
+    base_delay = 1  # Start with 1 second delay
+    
+    while retry_count <= max_retries:
+        try:
+            response = requests.get(url, headers=headers, params=params, timeout=timeout)
+            
+            # If we get a 429, retry with exponential backoff
+            if response.status_code == 429:
+                if retry_count < max_retries:
+                    # Calculate exponential backoff: 1s, 2s, 4s, 8s, 16s
+                    delay = base_delay * (2 ** retry_count)
+                    print(f"  Rate limited (429), retrying in {delay} seconds... (attempt {retry_count + 1}/{max_retries})")
+                    time.sleep(delay)
+                    retry_count += 1
+                    continue
+                else:
+                    # Max retries reached, return the 429 response
+                    print(f"  Rate limited (429), max retries reached")
+                    return response
+            
+            # For any other status code, return immediately
+            return response
+            
+        except requests.RequestException:
+            # For network errors, don't retry - raise immediately
+            raise
+    
+    # This should not be reached, but just in case
+    return response
+
 
 def get_editions_config():
     """Reads the local editions.yml file."""
@@ -83,7 +133,7 @@ def get_buymeacoffee_stats():
                 'per_page': page_size
             }
 
-            response = requests.get(
+            response = request_with_backoff(
                 'https://developers.buymeacoffee.com/api/v1/supporters',
                 headers=headers,
                 params=params,
@@ -177,7 +227,7 @@ def get_buymeacoffee_subscriptions():
                 'status': 'active'
             }
 
-            response = requests.get(
+            response = request_with_backoff(
                 'https://developers.buymeacoffee.com/api/v1/subscriptions',
                 headers=headers,
                 params=params,
