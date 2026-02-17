@@ -34,38 +34,30 @@ def request_with_backoff(url, headers=None, params=None, timeout=10, max_retries
         requests.Response object
         
     Raises:
-        requests.RequestException: If request fails after all retries
+        requests.RequestException: If request fails due to network error
     """
     retry_count = 0
     base_delay = 1  # Start with 1 second delay
     
     while retry_count <= max_retries:
-        try:
-            response = requests.get(url, headers=headers, params=params, timeout=timeout)
-            
-            # If we get a 429, retry with exponential backoff
-            if response.status_code == 429:
-                if retry_count < max_retries:
-                    # Calculate exponential backoff: 1s, 2s, 4s, 8s, 16s
-                    delay = base_delay * (2 ** retry_count)
-                    print(f"  Rate limited (429), retrying in {delay} seconds... (attempt {retry_count + 1}/{max_retries})")
-                    time.sleep(delay)
-                    retry_count += 1
-                    continue
-                else:
-                    # Max retries reached, return the 429 response
-                    print(f"  Rate limited (429), max retries reached")
-                    return response
-            
-            # For any other status code, return immediately
-            return response
-            
-        except requests.RequestException:
-            # For network errors, don't retry - raise immediately
-            raise
-    
-    # This should not be reached, but just in case
-    return response
+        response = requests.get(url, headers=headers, params=params, timeout=timeout)
+        
+        # If we get a 429, retry with exponential backoff
+        if response.status_code == 429:
+            if retry_count < max_retries:
+                # Calculate exponential backoff: 1s, 2s, 4s, 8s, 16s
+                delay = base_delay * (2 ** retry_count)
+                print(f"  Rate limited (429), retrying in {delay} seconds... (attempt {retry_count + 1}/{max_retries})")
+                time.sleep(delay)
+                retry_count += 1
+                continue
+            else:
+                # Max retries reached, return the 429 response
+                print(f"  Rate limited (429), max retries reached")
+                return response
+        
+        # For any other status code, return immediately
+        return response
 
 
 def get_editions_config():
