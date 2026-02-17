@@ -3,10 +3,11 @@ import io
 import shutil
 import json
 import yaml
-import time
 from datetime import datetime, timezone
 import fitz  # PyMuPDF
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from google.cloud import storage
 from jinja2 import Environment, FileSystemLoader
 
@@ -19,45 +20,31 @@ TEMPLATE_DIR = 'templates'
 TEMPLATE_FILE = 'index.html.j2'
 EDITIONS_FILE = 'editions.yml'
 
-def request_with_backoff(url, headers=None, params=None, timeout=10, max_retries=5):
+def create_session_with_retry(max_retries=5, backoff_factor=1):
     """
-    Makes an HTTP GET request with exponential backoff for 429 errors.
+    Creates a requests Session with retry configuration for 429 errors.
     
     Args:
-        url: The URL to request
-        headers: Optional headers dict
-        params: Optional query parameters dict
-        timeout: Request timeout in seconds
         max_retries: Maximum number of retry attempts for 429 errors
+        backoff_factor: Multiplier for exponential backoff (1 = 1s, 2s, 4s, 8s, 16s)
         
     Returns:
-        requests.Response object
-        
-    Raises:
-        requests.RequestException: If request fails due to network error
+        requests.Session configured with retry adapter
     """
-    retry_count = 0
-    base_delay = 1  # Start with 1 second delay
+    retry = Retry(
+        total=max_retries,
+        backoff_factor=backoff_factor,  # exponential backoff: 1s, 2s, 4s…
+        status_forcelist=[429],          # retry on rate limit
+        respect_retry_after_header=True,
+    )
     
-    while retry_count <= max_retries:
-        response = requests.get(url, headers=headers, params=params, timeout=timeout)
-        
-        # If we get a 429, retry with exponential backoff
-        if response.status_code == 429:
-            if retry_count < max_retries:
-                # Calculate exponential backoff: 1s, 2s, 4s, 8s, 16s
-                delay = base_delay * (2 ** retry_count)
-                print(f"  Rate limited (429), retrying in {delay} seconds... (attempt {retry_count + 1}/{max_retries})")
-                time.sleep(delay)
-                retry_count += 1
-                continue
-            else:
-                # Max retries reached, return the 429 response
-                print(f"  Rate limited (429), max retries reached")
-                return response
-        
-        # For any other status code, return immediately
-        return response
+    adapter = HTTPAdapter(max_retries=retry)
+    
+    session = requests.Session()
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    
+    return session
 
 
 def get_editions_config():
@@ -108,6 +95,9 @@ def get_buymeacoffee_stats():
         return fallback_stats
 
     try:
+        # Create session with retry configuration
+        session = create_session_with_retry()
+        
         # Make API request to Buy Me a Coffee with pagination
         headers = {
             'Authorization': f'Bearer {api_token}',
@@ -125,7 +115,7 @@ def get_buymeacoffee_stats():
                 'per_page': page_size
             }
 
-            response = request_with_backoff(
+            response = session.get(
                 'https://developers.buymeacoffee.com/api/v1/supporters',
                 headers=headers,
                 params=params,
@@ -202,6 +192,9 @@ def get_buymeacoffee_subscriptions():
         return []
 
     try:
+        # Create session with retry configuration
+        session = create_session_with_retry()
+        
         # Make API request to Buy Me a Coffee subscriptions endpoint
         headers = {
             'Authorization': f'Bearer {api_token}',
@@ -219,7 +212,7 @@ def get_buymeacoffee_subscriptions():
                 'status': 'active'
             }
 
-            response = request_with_backoff(
+            response = session.get(
                 'https://developers.buymeacoffee.com/api/v1/subscriptions',
                 headers=headers,
                 params=params,
