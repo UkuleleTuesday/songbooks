@@ -33,9 +33,11 @@ def create_session_with_retry(max_retries=5, backoff_factor=1):
     """
     retry = Retry(
         total=max_retries,
-        backoff_factor=backoff_factor,  # exponential backoff: 1s, 2s, 4s…
-        status_forcelist=[429],          # retry on rate limit
+        backoff_factor=backoff_factor,       # exponential backoff: 1s, 2s, 4s…
+        status_forcelist=[429],              # retry on rate limit
+        allowed_methods=['GET'],             # only retry GET requests
         respect_retry_after_header=True,
+        raise_on_status=False,               # don't raise exceptions, return response
     )
     
     adapter = HTTPAdapter(max_retries=retry)

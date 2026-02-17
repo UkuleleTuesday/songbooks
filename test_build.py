@@ -463,6 +463,8 @@ def test_create_session_with_retry():
     assert adapter.max_retries.backoff_factor == 2
     assert 429 in adapter.max_retries.status_forcelist
     assert adapter.max_retries.respect_retry_after_header is True
+    assert 'GET' in adapter.max_retries.allowed_methods
+    assert adapter.max_retries.raise_on_status is False
 
 
 def test_get_buymeacoffee_stats_success(requests_mock):
