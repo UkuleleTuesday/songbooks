@@ -50,10 +50,22 @@ def create_session_with_retry(max_retries=5, backoff_factor=1):
 
 
 def get_editions_config():
-    """Reads the local editions.yml file."""
+    """Reads the local editions.yml file.
+
+    Returns list of tuples: (edition_name, is_preview)
+    Each edition is a dict with 'name' and optional 'preview' flag.
+    """
     with open(EDITIONS_FILE, 'r') as f:
         config = yaml.safe_load(f)
-    return config.get('editions', [])
+
+    editions = []
+    for item in config.get('editions', []):
+        name = item.get('name')
+        preview = item.get('preview', False)
+        if name:
+            editions.append((name, preview))
+
+    return editions
 
 def get_latest_edition_info(bucket, edition_name):
     """Fetches and parses the latest.json for a given edition."""
@@ -323,10 +335,11 @@ def write_output(html):
         shutil.copytree(assets_src, assets_dest)
 
 if __name__ == '__main__':
-    editions = get_editions_config()
-    print(f"Found {len(editions)} editions in {EDITIONS_FILE}")
+    editions_config = get_editions_config()
+    print(f"Found {len(editions_config)} editions in {EDITIONS_FILE}")
     songbooks = []
-    
+    preview_editions = {}
+
     storage_client = storage.Client.create_anonymous_client()
     bucket = storage_client.bucket(BUCKET_NAME)
 
@@ -335,21 +348,21 @@ if __name__ == '__main__':
     # Fetch Buy Me a Coffee supporter statistics
     print("Fetching Buy Me a Coffee supporter statistics...")
     supporter_stats = get_buymeacoffee_stats()
-    
+
     # Fetch Buy Me a Coffee monthly subscriptions
     print("Fetching Buy Me a Coffee monthly supporters...")
     monthly_supporters = get_buymeacoffee_subscriptions()
 
     latest_update_time = None
 
-    for edition_name in editions:
-        print(f"Processing edition: {edition_name}")
+    for edition_name, is_preview in editions_config:
+        print(f"Processing edition: {edition_name}{' (preview)' if is_preview else ''}")
         latest_info = get_latest_edition_info(bucket, edition_name)
 
         if not latest_info or 'pdf_filename' not in latest_info:
             print(f"  Skipping '{edition_name}' due to missing info.")
             continue
-            
+
         if 'manifest_filename' in latest_info:
             manifest = get_edition_manifest(bucket, edition_name, latest_info['manifest_filename'])
             if manifest and 'generated_at' in manifest:
@@ -359,7 +372,7 @@ if __name__ == '__main__':
                     dt = datetime.fromisoformat(generated_at_str.replace('Z', '+00:00'))
                     # Ensure timezone is set for comparison
                     dt_utc = dt.astimezone(timezone.utc) if dt.tzinfo is None else dt
-                    
+
                     if latest_update_time is None or dt_utc > latest_update_time:
                         latest_update_time = dt_utc
                 except ValueError:
@@ -368,30 +381,37 @@ if __name__ == '__main__':
         pdf_filename = latest_info['pdf_filename']
         pdf_url = f"https://storage.googleapis.com/{BUCKET_NAME}/{edition_name}/{pdf_filename}"
         print(f"  Using PDF URL: {pdf_url}")
-        
+
         preview_filename = f"{edition_name}.png"
         preview_path_abs = os.path.join(PREVIEW_DIR, preview_filename)
 
         metadata = process_pdf_url(edition_name, pdf_url, preview_path_abs)
 
-        songbooks.append({
+        edition_data = {
             'edition_name': edition_name,
             'title': metadata['title'],
             'subject': metadata['subject'],
             'url': pdf_url,
             'preview_image': f'previews/{preview_filename}',
             'filename': pdf_filename,
-        })
+        }
+
+        # Separate preview editions from visible ones
+        if is_preview:
+            preview_editions[edition_name] = edition_data
+        else:
+            songbooks.append(edition_data)
 
     last_updated_iso = latest_update_time.isoformat() if latest_update_time else None
     html = render_index(songbooks, last_updated=last_updated_iso, base_url=BASE_URL, supporter_stats=supporter_stats, monthly_supporters=monthly_supporters)
     write_output(html)
-    print(f"Generated {len(songbooks)} songbooks → {OUTPUT_DIR}/index.html")
+    print(f"Generated {len(songbooks)} visible songbooks → {OUTPUT_DIR}/index.html")
 
-    # Generate redirects for each edition
+    # Generate redirects for each edition (both visible and preview)
     print("Generating redirects for each edition...")
     redirect_count = 0
-    for songbook in songbooks:
+    all_songbooks = songbooks + list(preview_editions.values())
+    for songbook in all_songbooks:
         redirect_dir = os.path.join(OUTPUT_DIR, songbook['edition_name'])
         os.makedirs(redirect_dir, exist_ok=True)
 
