@@ -1,5 +1,13 @@
 # List of songbook editions to display on the site.
-# The key for each item (e.g., "current") is used as the edition's unique identifier.
+# Each edition is a dict with 'name' and optional 'preview: true'.
+# Preview editions are accessible at /<name>/ but not shown on the site listing.
+#
+# Examples:
+#   - name: current        # displayed on site
+#   - name: wip
+#     preview: true        # accessible at /wip/ but not shown on site listing
 editions:
-  - current
-  - complete
+  - name: current
+  - name: complete
+  - name: womens-2026
+    preview: true
