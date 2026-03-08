@@ -52,8 +52,8 @@ def create_session_with_retry(max_retries=5, backoff_factor=1):
 def get_editions_config():
     """Reads the local editions.yml file.
 
-    Returns list of tuples: (edition_name, is_preview)
-    Each edition is a dict with 'name' and optional 'preview' flag.
+    Returns list of tuples: (edition_name, is_hidden)
+    Each edition is a dict with 'name' and optional 'hidden' flag.
     """
     with open(EDITIONS_FILE, 'r') as f:
         config = yaml.safe_load(f)
@@ -61,9 +61,9 @@ def get_editions_config():
     editions = []
     for item in config.get('editions', []):
         name = item.get('name')
-        preview = item.get('preview', False)
+        hidden = item.get('hidden', False)
         if name:
-            editions.append((name, preview))
+            editions.append((name, hidden))
 
     return editions
 
@@ -338,7 +338,7 @@ if __name__ == '__main__':
     editions_config = get_editions_config()
     print(f"Found {len(editions_config)} editions in {EDITIONS_FILE}")
     songbooks = []
-    preview_editions = {}
+    hidden_editions = {}
 
     storage_client = storage.Client.create_anonymous_client()
     bucket = storage_client.bucket(BUCKET_NAME)
@@ -355,8 +355,8 @@ if __name__ == '__main__':
 
     latest_update_time = None
 
-    for edition_name, is_preview in editions_config:
-        print(f"Processing edition: {edition_name}{' (preview)' if is_preview else ''}")
+    for edition_name, is_hidden in editions_config:
+        print(f"Processing edition: {edition_name}{' (hidden)' if is_hidden else ''}")
         latest_info = get_latest_edition_info(bucket, edition_name)
 
         if not latest_info or 'pdf_filename' not in latest_info:
@@ -396,9 +396,9 @@ if __name__ == '__main__':
             'filename': pdf_filename,
         }
 
-        # Separate preview editions from visible ones
-        if is_preview:
-            preview_editions[edition_name] = edition_data
+        # Separate hidden editions from visible ones
+        if is_hidden:
+            hidden_editions[edition_name] = edition_data
         else:
             songbooks.append(edition_data)
 
@@ -407,10 +407,10 @@ if __name__ == '__main__':
     write_output(html)
     print(f"Generated {len(songbooks)} visible songbooks → {OUTPUT_DIR}/index.html")
 
-    # Generate redirects for each edition (both visible and preview)
+    # Generate redirects for each edition (both visible and hidden)
     print("Generating redirects for each edition...")
     redirect_count = 0
-    all_songbooks = songbooks + list(preview_editions.values())
+    all_songbooks = songbooks + list(hidden_editions.values())
     for songbook in all_songbooks:
         redirect_dir = os.path.join(OUTPUT_DIR, songbook['edition_name'])
         os.makedirs(redirect_dir, exist_ok=True)
