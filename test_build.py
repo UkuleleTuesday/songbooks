@@ -204,14 +204,18 @@ def test_render_index(sample_files, sample_supporter_stats):
 def test_get_editions_config(monkeypatch):
     """Test reading the editions YAML config."""
     mock_yaml_content = {
-        'editions': ['current', 'complete']
+        'editions': [
+            {'name': 'current'},
+            {'name': 'complete'},
+            {'name': 'wip', 'hidden': True},
+        ]
     }
     # Use monkeypatch to mock open() and yaml.safe_load()
     monkeypatch.setattr('builtins.open', lambda *args, **kwargs: MagicMock())
     monkeypatch.setattr('build.yaml.safe_load', lambda *args: mock_yaml_content)
 
     editions = get_editions_config()
-    assert editions == ['current', 'complete']
+    assert editions == [('current', False), ('complete', False), ('wip', True)]
 
 def test_get_latest_edition_info():
     """Test fetching and parsing latest.json from a mock GCS bucket."""
