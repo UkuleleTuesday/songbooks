@@ -7,9 +7,8 @@
 #   - name: wip
 #     hidden: true         # accessible at /wip/ but not shown on site listing
 editions:
+  - name: womens-2026
   - name: current
   - name: complete
-  - name: womens-2026
-    hidden: true
   - name: ukulele-hooley-2025
     hidden: true
