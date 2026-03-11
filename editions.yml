@@ -9,8 +9,8 @@
 editions:
   - name: womens-2026
   - name: current
-    hidden: true
+    hidden: false
   - name: complete
-    hidden: true
+    hidden: false
   - name: ukulele-hooley-2025
     hidden: true
