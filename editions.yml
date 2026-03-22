@@ -8,6 +8,7 @@
 #     hidden: true         # accessible at /wip/ but not shown on site listing
 editions:
   - name: womens-2026
+    hidden: true
   - name: current
     hidden: false
   - name: complete
