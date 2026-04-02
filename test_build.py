@@ -6,11 +6,10 @@ import json
 import pytest
 import requests_mock
 
-import yaml
 from unittest.mock import MagicMock
 
 # Import functions from build.py for testing
-from build import get_buymeacoffee_stats, get_buymeacoffee_subscriptions, render_index, get_editions_config, get_latest_edition_info, get_edition_manifest, create_session_with_retry
+from build import get_buymeacoffee_stats, get_buymeacoffee_subscriptions, render_index, get_editions_from_gcs, get_latest_edition_info, get_edition_manifest, create_session_with_retry
 
 
 @pytest.fixture
@@ -201,21 +200,70 @@ def test_render_index(sample_files, sample_supporter_stats):
     assert 'mailto:contact@ukuleletuesday.ie' not in html
     assert 'https://www.ukuleletuesday.ie/contact-us/' in html
 
-def test_get_editions_config(monkeypatch):
-    """Test reading the editions YAML config."""
-    mock_yaml_content = {
-        'editions': [
-            {'name': 'current'},
-            {'name': 'complete'},
-            {'name': 'wip', 'hidden': True},
-        ]
-    }
-    # Use monkeypatch to mock open() and yaml.safe_load()
-    monkeypatch.setattr('builtins.open', lambda *args, **kwargs: MagicMock())
-    monkeypatch.setattr('build.yaml.safe_load', lambda *args: mock_yaml_content)
+def test_get_editions_from_gcs():
+    """Test dynamic edition discovery from GCS bucket prefixes."""
+    mock_bucket = MagicMock()
 
-    editions = get_editions_config()
-    assert editions == [('current', False), ('complete', False), ('wip', True)]
+    # Simulate three top-level prefixes
+    mock_blobs = MagicMock()
+    mock_blobs.prefixes = ['complete/', 'current/', 'wip/']
+    mock_bucket.list_blobs.return_value = mock_blobs
+
+    def make_blob(data):
+        blob = MagicMock()
+        blob.download_as_text.return_value = json.dumps(data)
+        return blob
+
+    def blob_side_effect(path):
+        return {
+            'complete/latest.json': make_blob({'visibility': 'public', 'pinned': True, 'generated_at': '2024-01-01T00:00:00Z'}),
+            'current/latest.json': make_blob({'visibility': 'public', 'pinned': False, 'generated_at': '2024-06-01T00:00:00Z'}),
+            'wip/latest.json': make_blob({'visibility': 'unlisted', 'pinned': False, 'generated_at': '2024-03-01T00:00:00Z'}),
+        }[path]
+
+    mock_bucket.blob.side_effect = blob_side_effect
+
+    editions = get_editions_from_gcs(mock_bucket)
+    # 'complete' is pinned so it comes first; then newest-first among unpinned: current > wip
+    assert editions == [('complete', 'public'), ('current', 'public'), ('wip', 'unlisted')]
+
+
+def test_get_editions_from_gcs_skips_missing_latest_json():
+    """Test that prefixes without latest.json are skipped."""
+    mock_bucket = MagicMock()
+
+    mock_blobs = MagicMock()
+    mock_blobs.prefixes = ['good/', 'bad/']
+    mock_bucket.list_blobs.return_value = mock_blobs
+
+    def blob_side_effect(path):
+        blob = MagicMock()
+        if path == 'good/latest.json':
+            blob.download_as_text.return_value = json.dumps({'visibility': 'public'})
+        else:
+            blob.download_as_text.side_effect = Exception("Not Found")
+        return blob
+
+    mock_bucket.blob.side_effect = blob_side_effect
+
+    editions = get_editions_from_gcs(mock_bucket)
+    assert editions == [('good', 'public')]
+
+
+def test_get_editions_from_gcs_defaults_to_unlisted():
+    """Test that editions without a visibility field default to unlisted."""
+    mock_bucket = MagicMock()
+
+    mock_blobs = MagicMock()
+    mock_blobs.prefixes = ['no-viz/']
+    mock_bucket.list_blobs.return_value = mock_blobs
+
+    blob = MagicMock()
+    blob.download_as_text.return_value = json.dumps({})
+    mock_bucket.blob.return_value = blob
+
+    editions = get_editions_from_gcs(mock_bucket)
+    assert editions == [('no-viz', 'unlisted')]
 
 def test_get_latest_edition_info():
     """Test fetching and parsing latest.json from a mock GCS bucket."""

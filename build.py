@@ -2,7 +2,6 @@ import os
 import io
 import shutil
 import json
-import yaml
 from datetime import datetime, timezone
 import fitz  # PyMuPDF
 import requests
@@ -12,13 +11,11 @@ from google.cloud import storage
 from jinja2 import Environment, FileSystemLoader
 
 # Configuration
-BUCKET_NAME = os.environ['GCS_BUCKET']
 BASE_URL = 'https://songbooks.ukuleletuesday.ie'
 OUTPUT_DIR = 'public'
 PREVIEW_DIR = os.path.join(OUTPUT_DIR, 'previews')
 TEMPLATE_DIR = 'templates'
 TEMPLATE_FILE = 'index.html.j2'
-EDITIONS_FILE = 'editions.yml'
 
 def create_session_with_retry(max_retries=5, backoff_factor=1):
     """
@@ -49,23 +46,34 @@ def create_session_with_retry(max_retries=5, backoff_factor=1):
     return session
 
 
-def get_editions_config():
-    """Reads the local editions.yml file.
-
-    Returns list of tuples: (edition_name, is_hidden)
-    Each edition is a dict with 'name' and optional 'hidden' flag.
+def get_editions_from_gcs(bucket):
     """
-    with open(EDITIONS_FILE, 'r') as f:
-        config = yaml.safe_load(f)
+    Discover all editions by listing top-level GCS prefixes and
+    reading their latest.json for visibility and pinned fields.
+    Returns list of tuples: (edition_name, visibility)
+    Pinned editions first, then newest-first within each group.
+    """
+    blobs = bucket.list_blobs(delimiter='/')
+    list(blobs)  # consume iterator to populate blobs.prefixes
 
     editions = []
-    for item in config.get('editions', []):
-        name = item.get('name')
-        hidden = item.get('hidden', False)
-        if name:
-            editions.append((name, hidden))
+    for prefix in blobs.prefixes:
+        edition_name = prefix.rstrip('/')
+        blob = bucket.blob(f"{edition_name}/latest.json")
+        try:
+            data = json.loads(blob.download_as_text())
+            visibility = data.get('visibility', 'unlisted')
+            pinned = data.get('pinned', False)
+            generated_at = data.get('generated_at', '')
+            editions.append((edition_name, visibility, pinned, generated_at))
+        except Exception:
+            pass  # skip prefixes with no latest.json
 
-    return editions
+    # Sort: pinned first, then newest-first within each group
+    editions.sort(key=lambda x: x[3], reverse=True)  # newest first
+    editions.sort(key=lambda x: not x[2])             # pinned first (stable)
+
+    return [(name, visibility) for name, visibility, _, _ in editions]
 
 def get_latest_edition_info(bucket, edition_name):
     """Fetches and parses the latest.json for a given edition."""
@@ -335,13 +343,14 @@ def write_output(html):
         shutil.copytree(assets_src, assets_dest)
 
 if __name__ == '__main__':
-    editions_config = get_editions_config()
-    print(f"Found {len(editions_config)} editions in {EDITIONS_FILE}")
+    bucket_name = os.environ['GCS_BUCKET']
+    storage_client = storage.Client()
+    bucket = storage_client.bucket(bucket_name)
+
+    editions_config = get_editions_from_gcs(bucket)
+    print(f"Discovered {len(editions_config)} editions from GCS")
     songbooks = []
     hidden_editions = {}
-
-    storage_client = storage.Client.create_anonymous_client()
-    bucket = storage_client.bucket(BUCKET_NAME)
 
     os.makedirs(PREVIEW_DIR, exist_ok=True)
 
@@ -355,8 +364,8 @@ if __name__ == '__main__':
 
     latest_update_time = None
 
-    for edition_name, is_hidden in editions_config:
-        print(f"Processing edition: {edition_name}{' (hidden)' if is_hidden else ''}")
+    for edition_name, visibility in editions_config:
+        print(f"Processing edition: {edition_name}{'' if visibility == 'public' else f' ({visibility})'}")
         latest_info = get_latest_edition_info(bucket, edition_name)
 
         if not latest_info or 'pdf_filename' not in latest_info:
@@ -379,7 +388,7 @@ if __name__ == '__main__':
                     print(f"  Could not parse timestamp: {generated_at_str}")
 
         pdf_filename = latest_info['pdf_filename']
-        pdf_url = f"https://storage.googleapis.com/{BUCKET_NAME}/{edition_name}/{pdf_filename}"
+        pdf_url = f"https://storage.googleapis.com/{bucket_name}/{edition_name}/{pdf_filename}"
         print(f"  Using PDF URL: {pdf_url}")
 
         preview_filename = f"{edition_name}.png"
@@ -396,8 +405,8 @@ if __name__ == '__main__':
             'filename': pdf_filename,
         }
 
-        # Separate hidden editions from visible ones
-        if is_hidden:
+        # Separate non-public editions from visible ones
+        if visibility != 'public':
             hidden_editions[edition_name] = edition_data
         else:
             songbooks.append(edition_data)
