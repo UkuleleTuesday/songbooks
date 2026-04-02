@@ -62,7 +62,7 @@ def get_editions_from_gcs(bucket):
         blob = bucket.blob(f"{edition_name}/latest.json")
         try:
             data = json.loads(blob.download_as_text())
-            visibility = data.get('visibility', 'public')
+            visibility = data.get('visibility', 'unlisted')
             pinned = data.get('pinned', False)
             generated_at = data.get('generated_at', '')
             editions.append((edition_name, visibility, pinned, generated_at))

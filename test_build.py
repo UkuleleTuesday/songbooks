@@ -249,6 +249,22 @@ def test_get_editions_from_gcs_skips_missing_latest_json():
     editions = get_editions_from_gcs(mock_bucket)
     assert editions == [('good', 'public')]
 
+
+def test_get_editions_from_gcs_defaults_to_unlisted():
+    """Test that editions without a visibility field default to unlisted."""
+    mock_bucket = MagicMock()
+
+    mock_blobs = MagicMock()
+    mock_blobs.prefixes = ['no-viz/']
+    mock_bucket.list_blobs.return_value = mock_blobs
+
+    blob = MagicMock()
+    blob.download_as_text.return_value = json.dumps({})
+    mock_bucket.blob.return_value = blob
+
+    editions = get_editions_from_gcs(mock_bucket)
+    assert editions == [('no-viz', 'unlisted')]
+
 def test_get_latest_edition_info():
     """Test fetching and parsing latest.json from a mock GCS bucket."""
     mock_bucket = MagicMock()
