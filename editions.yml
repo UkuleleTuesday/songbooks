@@ -10,8 +10,9 @@ editions:
   - name: womens-2026
     hidden: true
   - name: april-fools-2026
-  - name: current
     hidden: true
+  - name: current
+    hidden: false
   - name: complete
   - name: ukulele-hooley-2025
     hidden: true
