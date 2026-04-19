@@ -9,6 +9,8 @@
 editions:
   - name: womens-2026
     hidden: true
+  - name: wexford-2026
+    hidden: true
   - name: april-fools-2026
     hidden: true
   - name: current
