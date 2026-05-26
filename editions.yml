@@ -15,6 +15,7 @@ editions:
     hidden: true
   - name: current
     hidden: false
+  - name: monopolele-2026
   - name: complete
   - name: ukulele-hooley-2025
     hidden: true
