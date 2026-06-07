@@ -10,7 +10,7 @@ import yaml
 from unittest.mock import MagicMock
 
 # Import functions from build.py for testing
-from build import get_buymeacoffee_stats, get_buymeacoffee_subscriptions, render_index, get_editions_config, get_latest_edition_info, get_edition_manifest, create_session_with_retry
+from build import get_buymeacoffee_stats, get_buymeacoffee_subscriptions, render_index, get_editions_config, get_latest_edition_info, get_edition_manifest, create_session_with_retry, extract_changelog
 
 
 @pytest.fixture
@@ -205,7 +205,7 @@ def test_get_editions_config(monkeypatch):
     """Test reading the editions YAML config."""
     mock_yaml_content = {
         'editions': [
-            {'name': 'current'},
+            {'name': 'current', 'show_changelog': True},
             {'name': 'complete'},
             {'name': 'wip', 'hidden': True},
         ]
@@ -215,7 +215,11 @@ def test_get_editions_config(monkeypatch):
     monkeypatch.setattr('build.yaml.safe_load', lambda *args: mock_yaml_content)
 
     editions = get_editions_config()
-    assert editions == [('current', False), ('complete', False), ('wip', True)]
+    assert editions == [
+        {'name': 'current', 'hidden': False, 'show_changelog': True},
+        {'name': 'complete', 'hidden': False, 'show_changelog': False},
+        {'name': 'wip', 'hidden': True, 'show_changelog': False},
+    ]
 
 def test_get_latest_edition_info():
     """Test fetching and parsing latest.json from a mock GCS bucket."""
@@ -398,6 +402,61 @@ def test_render_index_with_monthly_supporters(sample_files, sample_supporter_sta
     assert 'John Doe' in html
     assert 'Jane Smith' in html
     assert 'Bob Wilson' in html
+
+def test_extract_changelog():
+    """Test extracting added/removed songs from a manifest's changelog."""
+    # Manifest with a changelog containing additions and removals
+    manifest = {
+        'changelog': {
+            'added': ['New Song - Artist A', 'Another One - Artist B.pdf'],
+            'removed': ['Old Song - Artist C'],
+        }
+    }
+    result = extract_changelog(manifest)
+    # Trailing .pdf is stripped defensively
+    assert result == {
+        'added': ['New Song - Artist A', 'Another One - Artist B'],
+        'removed': ['Old Song - Artist C'],
+    }
+
+    # No changelog key -> None
+    assert extract_changelog({'generated_at': '2024-01-01T12:00:00Z'}) is None
+
+    # Empty changelog lists -> None
+    assert extract_changelog({'changelog': {'added': [], 'removed': []}}) is None
+
+    # None manifest -> None
+    assert extract_changelog(None) is None
+
+
+def test_render_index_with_changelog(sample_supporter_stats):
+    """Test that a songbook's changelog renders a 'What's new' panel."""
+    files = [{
+        'title': 'Current Songbook',
+        'subject': 'Weekly',
+        'url': 'https://example.com/current.pdf',
+        'preview_image': 'previews/current.png',
+        'filename': 'current.pdf',
+        'changelog': {
+            'added': ['Brand New Song - The Band'],
+            'removed': ['Retired Song - Old Act'],
+        },
+    }]
+
+    html = render_index(files, supporter_stats=sample_supporter_stats)
+
+    assert "What's new" in html
+    assert 'Added' in html
+    assert 'Removed' in html
+    assert 'Brand New Song - The Band' in html
+    assert 'Retired Song - Old Act' in html
+
+
+def test_render_index_without_changelog(sample_files, sample_supporter_stats):
+    """Test that songbooks without a changelog show no 'What's new' panel."""
+    html = render_index(sample_files, supporter_stats=sample_supporter_stats)
+    assert "What's new" not in html
+
 
 def test_render_index_without_monthly_supporters(sample_files, sample_supporter_stats):
     """Test HTML template rendering without monthly supporters."""
