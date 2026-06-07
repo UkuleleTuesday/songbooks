@@ -2,6 +2,10 @@
 # Each edition is a dict with 'name' and optional 'hidden: true'.
 # Hidden editions are accessible at /<name>/ but not shown on the site listing.
 #
+# Optional 'show_changelog: true' surfaces a collapsible "What's new" panel on the
+# edition's card, listing the songs added/removed since the previous edition
+# (sourced from the 'changelog' object in the edition's manifest). Defaults to false.
+#
 # Examples:
 #   - name: current        # displayed on site
 #   - name: wip
@@ -15,6 +19,7 @@ editions:
     hidden: true
   - name: current
     hidden: false
+    show_changelog: true
   - name: monopolele-2026
     hidden: true
   - name: complete

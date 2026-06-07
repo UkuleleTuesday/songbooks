@@ -52,8 +52,8 @@ def create_session_with_retry(max_retries=5, backoff_factor=1):
 def get_editions_config():
     """Reads the local editions.yml file.
 
-    Returns list of tuples: (edition_name, is_hidden)
-    Each edition is a dict with 'name' and optional 'hidden' flag.
+    Returns a list of dicts: {'name', 'hidden', 'show_changelog'}
+    Each edition has a 'name' and optional 'hidden' and 'show_changelog' flags.
     """
     with open(EDITIONS_FILE, 'r') as f:
         config = yaml.safe_load(f)
@@ -61,9 +61,12 @@ def get_editions_config():
     editions = []
     for item in config.get('editions', []):
         name = item.get('name')
-        hidden = item.get('hidden', False)
         if name:
-            editions.append((name, hidden))
+            editions.append({
+                'name': name,
+                'hidden': item.get('hidden', False),
+                'show_changelog': item.get('show_changelog', False),
+            })
 
     return editions
 
@@ -92,6 +95,23 @@ def get_edition_manifest(bucket, edition_name, manifest_filename):
     except Exception as e:
         print(f"  Could not fetch or parse manifest {blob_name}: {e}")
         return None
+
+def extract_changelog(manifest):
+    """Extracts the added/removed song lists from a manifest's changelog object.
+
+    Returns a dict with 'added' and 'removed' lists, or None if the manifest has
+    no changelog or the changelog has no additions or removals.
+    """
+    if not manifest:
+        return None
+    changelog = manifest.get('changelog')
+    if not changelog:
+        return None
+    added = changelog.get('added', [])
+    removed = changelog.get('removed', [])
+    if not added and not removed:
+        return None
+    return {'added': added, 'removed': removed}
 
 def get_buymeacoffee_stats():
     """Fetch supporter statistics from Buy Me a Coffee API with pagination."""
@@ -355,7 +375,10 @@ if __name__ == '__main__':
 
     latest_update_time = None
 
-    for edition_name, is_hidden in editions_config:
+    for edition in editions_config:
+        edition_name = edition['name']
+        is_hidden = edition['hidden']
+        show_changelog = edition['show_changelog']
         print(f"Processing edition: {edition_name}{' (hidden)' if is_hidden else ''}")
         latest_info = get_latest_edition_info(bucket, edition_name)
 
@@ -363,8 +386,11 @@ if __name__ == '__main__':
             print(f"  Skipping '{edition_name}' due to missing info.")
             continue
 
+        changelog = None
         if 'manifest_filename' in latest_info:
             manifest = get_edition_manifest(bucket, edition_name, latest_info['manifest_filename'])
+            if show_changelog:
+                changelog = extract_changelog(manifest)
             if manifest and 'generated_at' in manifest:
                 generated_at_str = manifest['generated_at']
                 try:
@@ -395,6 +421,9 @@ if __name__ == '__main__':
             'preview_image': f'previews/{preview_filename}',
             'filename': pdf_filename,
         }
+
+        if changelog:
+            edition_data['changelog'] = changelog
 
         # Separate hidden editions from visible ones
         if is_hidden:

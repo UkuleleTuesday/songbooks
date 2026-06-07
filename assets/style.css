@@ -121,6 +121,58 @@
       font-size: 0.9em;
       color: #666;
     }
+    .songbook-item {
+      display: flex;
+      flex-direction: column;
+    }
+    .songbook-changelog {
+      margin-top: 0.6em;
+      background-color: #fff;
+      border: 1px solid #eee;
+      border-radius: 8px;
+      font-size: 0.85em;
+    }
+    .songbook-changelog summary {
+      cursor: pointer;
+      padding: 0.6em 1em;
+      font-weight: bold;
+      color: var(--primary-color);
+      list-style-position: inside;
+    }
+    .songbook-changelog summary:hover {
+      color: #0b6b63;
+    }
+    .songbook-changelog .changelog-body {
+      padding: 0 1em 0.8em;
+      max-height: 16em;
+      overflow-y: auto;
+    }
+    .songbook-changelog .changelog-group {
+      margin-top: 0.6em;
+    }
+    .songbook-changelog .changelog-group h4 {
+      margin: 0 0 0.3em;
+      font-size: 0.95em;
+    }
+    .songbook-changelog .changelog-added h4 {
+      color: var(--primary-color);
+    }
+    .songbook-changelog .changelog-removed h4 {
+      color: var(--heart-color);
+    }
+    .songbook-changelog ul {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+    .songbook-changelog li {
+      padding: 0.15em 0;
+      color: #555;
+      border-bottom: 1px solid #f3f3f3;
+    }
+    .songbook-changelog li:last-child {
+      border-bottom: none;
+    }
     footer {
       margin-top: 2em;
       padding: 1.5em 1em;
