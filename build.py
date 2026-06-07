@@ -96,12 +96,6 @@ def get_edition_manifest(bucket, edition_name, manifest_filename):
         print(f"  Could not fetch or parse manifest {blob_name}: {e}")
         return None
 
-def strip_pdf(name):
-    """Removes a trailing '.pdf' extension from a song name, if present."""
-    if name.lower().endswith('.pdf'):
-        return name[:-4]
-    return name
-
 def extract_changelog(manifest):
     """Extracts the added/removed song lists from a manifest's changelog object.
 
@@ -113,8 +107,8 @@ def extract_changelog(manifest):
     changelog = manifest.get('changelog')
     if not changelog:
         return None
-    added = [strip_pdf(s) for s in changelog.get('added', [])]
-    removed = [strip_pdf(s) for s in changelog.get('removed', [])]
+    added = changelog.get('added', [])
+    removed = changelog.get('removed', [])
     if not added and not removed:
         return None
     return {'added': added, 'removed': removed}

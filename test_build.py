@@ -408,12 +408,11 @@ def test_extract_changelog():
     # Manifest with a changelog containing additions and removals
     manifest = {
         'changelog': {
-            'added': ['New Song - Artist A', 'Another One - Artist B.pdf'],
+            'added': ['New Song - Artist A', 'Another One - Artist B'],
             'removed': ['Old Song - Artist C'],
         }
     }
     result = extract_changelog(manifest)
-    # Trailing .pdf is stripped defensively
     assert result == {
         'added': ['New Song - Artist A', 'Another One - Artist B'],
         'removed': ['Old Song - Artist C'],
