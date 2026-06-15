@@ -208,6 +208,7 @@ def test_get_editions_config(monkeypatch):
             {'name': 'current', 'show_changelog': True},
             {'name': 'complete'},
             {'name': 'wip', 'hidden': True},
+            {'name': 'archive', 'show_changelog': False},
         ]
     }
     # Use monkeypatch to mock open() and yaml.safe_load()
@@ -215,10 +216,12 @@ def test_get_editions_config(monkeypatch):
     monkeypatch.setattr('build.yaml.safe_load', lambda *args: mock_yaml_content)
 
     editions = get_editions_config()
+    # show_changelog defaults to True; it can be explicitly suppressed per edition.
     assert editions == [
         {'name': 'current', 'hidden': False, 'show_changelog': True},
-        {'name': 'complete', 'hidden': False, 'show_changelog': False},
-        {'name': 'wip', 'hidden': True, 'show_changelog': False},
+        {'name': 'complete', 'hidden': False, 'show_changelog': True},
+        {'name': 'wip', 'hidden': True, 'show_changelog': True},
+        {'name': 'archive', 'hidden': False, 'show_changelog': False},
     ]
 
 def test_get_latest_edition_info():

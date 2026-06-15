@@ -68,7 +68,7 @@ def get_editions_config():
             editions.append({
                 'name': name,
                 'hidden': item.get('hidden', False),
-                'show_changelog': item.get('show_changelog', False),
+                'show_changelog': item.get('show_changelog', True),
             })
 
     return editions
