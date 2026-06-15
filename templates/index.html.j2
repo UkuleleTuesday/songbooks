@@ -45,19 +45,20 @@
     </header>
     
     <main>
+      {% macro changelog_song(song) %}{% if song.url %}<a href="{{ song.url }}" target="_blank" rel="noopener noreferrer">{{ song.name }}</a>{% else %}{{ song.name }}{% endif %}{% endmacro %}
       {% macro changelog_entry(entry) %}
       <div class="changelog-entry">
         {% if entry.date %}<div class="changelog-date">{{ entry.date }}</div>{% endif %}
         {% if entry.added %}
         <div class="changelog-group changelog-added">
           <h4>Added</h4>
-          <ul>{% for song in entry.added %}<li>{{ song }}</li>{% endfor %}</ul>
+          <ul>{% for song in entry.added %}<li>{{ changelog_song(song) }}</li>{% endfor %}</ul>
         </div>
         {% endif %}
         {% if entry.removed %}
         <div class="changelog-group changelog-removed">
           <h4>Removed</h4>
-          <ul>{% for song in entry.removed %}<li>{{ song }}</li>{% endfor %}</ul>
+          <ul>{% for song in entry.removed %}<li>{{ changelog_song(song) }}</li>{% endfor %}</ul>
         </div>
         {% endif %}
       </div>
