@@ -3,8 +3,9 @@
 # Hidden editions are accessible at /<name>/ but not shown on the site listing.
 #
 # Optional 'show_changelog: true' surfaces a collapsible "What's new" panel on the
-# edition's card, listing the songs added/removed since the previous edition
-# (sourced from the 'changelog' object in the edition's manifest). Defaults to false.
+# edition's card, showing the most recent songs added/removed plus a short dated
+# history of earlier changes (sourced from the edition's 'changes.json'). Defaults
+# to false.
 #
 # Examples:
 #   - name: current        # displayed on site

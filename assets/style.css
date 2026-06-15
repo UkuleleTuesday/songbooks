@@ -173,6 +173,42 @@
     .songbook-changelog li:last-child {
       border-bottom: none;
     }
+    .songbook-changelog .changelog-date {
+      margin-top: 0.4em;
+      font-weight: bold;
+      color: #333;
+    }
+    .songbook-changelog .changelog-earlier {
+      margin-top: 0.8em;
+      border-top: 1px solid #eee;
+      padding-top: 0.4em;
+    }
+    .songbook-changelog .changelog-earlier > summary {
+      cursor: pointer;
+      padding: 0.2em 0;
+      font-weight: normal;
+      color: #777;
+      font-size: 0.95em;
+      list-style-position: inside;
+    }
+    .songbook-changelog .changelog-earlier > summary:hover {
+      color: var(--primary-color);
+    }
+    .songbook-changelog .changelog-earlier-list {
+      margin-top: 0.3em;
+    }
+    .songbook-changelog .changelog-earlier-list li {
+      display: flex;
+      justify-content: space-between;
+      gap: 0.5em;
+    }
+    .songbook-changelog .changelog-earlier-date {
+      color: #555;
+    }
+    .songbook-changelog .changelog-earlier-counts {
+      color: #888;
+      white-space: nowrap;
+    }
     footer {
       margin-top: 2em;
       padding: 1.5em 1em;

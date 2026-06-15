@@ -68,21 +68,42 @@
               {% endif %}
             </div>
           </a>
-          {% if file.changelog and (file.changelog.added or file.changelog.removed) %}
+          {% if file.changelog %}
+          {% set latest = file.changelog.latest %}
           <details class="songbook-changelog">
-            <summary>What's new ({{ file.changelog.added|length }} added, {{ file.changelog.removed|length }} removed)</summary>
+            <summary>What's new ({{ latest.added|length }} added, {{ latest.removed|length }} removed)</summary>
             <div class="changelog-body">
-              {% if file.changelog.added %}
-              <div class="changelog-group changelog-added">
-                <h4>Added</h4>
-                <ul>{% for song in file.changelog.added %}<li>{{ song }}</li>{% endfor %}</ul>
+              <div class="changelog-entry">
+                {% if latest.date %}<div class="changelog-date">{{ latest.date }}</div>{% endif %}
+                {% if latest.added %}
+                <div class="changelog-group changelog-added">
+                  <h4>Added</h4>
+                  <ul>{% for song in latest.added %}<li>{{ song }}</li>{% endfor %}</ul>
+                </div>
+                {% endif %}
+                {% if latest.removed %}
+                <div class="changelog-group changelog-removed">
+                  <h4>Removed</h4>
+                  <ul>{% for song in latest.removed %}<li>{{ song }}</li>{% endfor %}</ul>
+                </div>
+                {% endif %}
               </div>
-              {% endif %}
-              {% if file.changelog.removed %}
-              <div class="changelog-group changelog-removed">
-                <h4>Removed</h4>
-                <ul>{% for song in file.changelog.removed %}<li>{{ song }}</li>{% endfor %}</ul>
-              </div>
+              {% if file.changelog.earlier %}
+              <details class="changelog-earlier">
+                <summary>Earlier changes</summary>
+                <ul class="changelog-earlier-list">
+                {% for entry in file.changelog.earlier %}
+                  <li>
+                    <span class="changelog-earlier-date">{{ entry.date }}</span>
+                    <span class="changelog-earlier-counts">
+                      {%- if entry.added_count %}{{ entry.added_count }} added{% endif -%}
+                      {%- if entry.added_count and entry.removed_count %}, {% endif -%}
+                      {%- if entry.removed_count %}{{ entry.removed_count }} removed{% endif -%}
+                    </span>
+                  </li>
+                {% endfor %}
+                </ul>
+              </details>
               {% endif %}
             </div>
           </details>
