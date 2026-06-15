@@ -144,7 +144,7 @@
     }
     .songbook-changelog .changelog-body {
       padding: 0 1em 0.8em;
-      max-height: 16em;
+      max-height: 20em;
       overflow-y: auto;
     }
     .songbook-changelog .changelog-group {
@@ -172,6 +172,30 @@
     }
     .songbook-changelog li:last-child {
       border-bottom: none;
+    }
+    .songbook-changelog .changelog-date {
+      margin-top: 0.4em;
+      font-weight: bold;
+      color: #333;
+    }
+    .songbook-changelog .changelog-more {
+      margin-top: 0.8em;
+      padding: 0.2em 0;
+      background: none;
+      border: none;
+      font: inherit;
+      font-weight: bold;
+      color: var(--primary-color);
+      cursor: pointer;
+    }
+    .songbook-changelog .changelog-more:hover {
+      color: #0b6b63;
+      text-decoration: underline;
+    }
+    .songbook-changelog .changelog-earlier .changelog-entry {
+      margin-top: 0.6em;
+      padding-top: 0.6em;
+      border-top: 1px solid #eee;
     }
     footer {
       margin-top: 2em;
