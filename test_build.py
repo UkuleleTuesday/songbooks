@@ -648,21 +648,25 @@ def test_get_buymeacoffee_stats_success(requests_mock):
             del os.environ['BUYMEACOFFEE_API_TOKEN']
 
 
-def test_get_buymeacoffee_stats_fallback_on_error(requests_mock):
-    """Test that get_buymeacoffee_stats returns fallback after errors."""
+def test_get_buymeacoffee_stats_fallback_on_error(requests_mock, capsys):
+    """Test that get_buymeacoffee_stats returns fallback and logs the error body."""
     os.environ['BUYMEACOFFEE_API_TOKEN'] = 'test-token'
-    
+
     base_url = 'https://developers.buymeacoffee.com/api/v1/supporters'
-    
-    # Mock: API returns error
-    requests_mock.get(base_url, status_code=500)
-    
+
+    # Mock: API returns a 502 with a diagnostic body (mirrors issue #32)
+    requests_mock.get(base_url, status_code=502, text='Bad Gateway: upstream timed out')
+
     try:
         result = get_buymeacoffee_stats()
-        
+
         # Should return fallback values
         assert result['total_amount'] == 912
         assert result['supporter_count'] == 61
+        # The response body must be surfaced in logs for diagnosis
+        captured = capsys.readouterr()
+        assert 'status 502' in captured.out
+        assert 'Bad Gateway: upstream timed out' in captured.out
     finally:
         if 'BUYMEACOFFEE_API_TOKEN' in os.environ:
             del os.environ['BUYMEACOFFEE_API_TOKEN']
@@ -694,20 +698,24 @@ def test_get_buymeacoffee_subscriptions_success(requests_mock):
             del os.environ['BUYMEACOFFEE_API_TOKEN']
 
 
-def test_get_buymeacoffee_subscriptions_empty_on_error(requests_mock):
-    """Test that get_buymeacoffee_subscriptions returns empty after errors."""
+def test_get_buymeacoffee_subscriptions_empty_on_error(requests_mock, capsys):
+    """Test that get_buymeacoffee_subscriptions returns empty and logs the error body."""
     os.environ['BUYMEACOFFEE_API_TOKEN'] = 'test-token'
-    
+
     base_url = 'https://developers.buymeacoffee.com/api/v1/subscriptions'
-    
-    # Mock: API returns error
-    requests_mock.get(base_url, status_code=500)
-    
+
+    # Mock: API returns a 502 with a diagnostic body (mirrors issue #32)
+    requests_mock.get(base_url, status_code=502, text='Bad Gateway: upstream timed out')
+
     try:
         result = get_buymeacoffee_subscriptions()
-        
+
         # Should return empty list
         assert result == []
+        # The response body must be surfaced in logs for diagnosis
+        captured = capsys.readouterr()
+        assert 'status 502' in captured.out
+        assert 'Bad Gateway: upstream timed out' in captured.out
     finally:
         if 'BUYMEACOFFEE_API_TOKEN' in os.environ:
             del os.environ['BUYMEACOFFEE_API_TOKEN']

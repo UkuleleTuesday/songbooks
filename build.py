@@ -171,6 +171,21 @@ def build_changelog(changes, history_limit=CHANGELOG_HISTORY_LIMIT):
         'earlier': [_changelog_entry(entry) for entry in entries[1:1 + history_limit]],
     }
 
+def _response_error_snippet(response, limit=500):
+    """Return a trimmed snippet of a response body for diagnostic logging.
+
+    Buy Me a Coffee returns a JSON error body on failures, while infrastructure
+    errors (e.g. a 502 from the gateway) return an HTML page. Logging a snippet
+    of either lets us tell those cases apart from the build logs instead of
+    only seeing a bare status code.
+    """
+    body = (response.text or '').strip()
+    if not body:
+        return '(empty response body)'
+    if len(body) > limit:
+        return body[:limit] + '... (truncated)'
+    return body
+
 def get_buymeacoffee_stats():
     """Fetch supporter statistics from Buy Me a Coffee API with pagination."""
     # Fallback values in case API fails
@@ -215,7 +230,7 @@ def get_buymeacoffee_stats():
             )
 
             if response.status_code != 200:
-                print(f"  Buy Me a Coffee API returned status {response.status_code} on page {page}, using fallback values")
+                print(f"  Buy Me a Coffee API returned status {response.status_code} on page {page}, using fallback values. Response body: {_response_error_snippet(response)}")
                 return fallback_stats
 
             data = response.json()
@@ -312,7 +327,7 @@ def get_buymeacoffee_subscriptions():
             )
 
             if response.status_code != 200:
-                print(f"  Buy Me a Coffee subscriptions API returned status {response.status_code} on page {page}, skipping monthly supporters")
+                print(f"  Buy Me a Coffee subscriptions API returned status {response.status_code} on page {page}, skipping monthly supporters. Response body: {_response_error_snippet(response)}")
                 return []
 
             data = response.json()
