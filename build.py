@@ -1,15 +1,23 @@
 import os
+import sys
 import io
 import shutil
 import json
+import time
 import yaml
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import fitz  # PyMuPDF
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from google.cloud import storage
 from jinja2 import Environment, FileSystemLoader
+
+# Stream stdout line-by-line so CI logs show progress live, instead of staying
+# silent until a block buffer fills or the process exits — which previously hid
+# where a slow/hung build was actually stuck.
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(line_buffering=True)
 
 # Configuration
 BUCKET_NAME = os.environ['GCS_BUCKET']
@@ -19,9 +27,38 @@ PREVIEW_DIR = os.path.join(OUTPUT_DIR, 'previews')
 TEMPLATE_DIR = 'templates'
 TEMPLATE_FILE = 'index.html.j2'
 EDITIONS_FILE = 'editions.yml'
+
+# Buy Me a Coffee data is cached between builds (persisted via actions/cache) so we
+# hit the rate-limited API at most once per TTL instead of on every 15-min build.
+# The two buckets are cached separately so a failure on one never stales the other.
+CACHE_DIR = '.bmc-cache'
+BMC_CACHE_TTL = timedelta(hours=24)
+DEFAULT_STATS = {'total_amount': 912, 'supporter_count': 61, 'currency': '€'}
+DEFAULT_SUBSCRIPTIONS = []
 # Number of older changelog entries to list under the latest change in the
 # "What's new" panel (the most recent change is always shown in full).
 CHANGELOG_HISTORY_LIMIT = 10
+
+class _LoggingRetry(Retry):
+    """A urllib3 Retry that announces each wait it takes.
+
+    Retries — especially Retry-After sleeps on 429s — are otherwise silent, so a
+    rate-limited request looks like a multi-minute hang with no explanation.
+    This logs which status triggered the retry and how long we're about to wait.
+    """
+
+    def sleep(self, response=None):
+        retry_after = None
+        if response is not None and self.respect_retry_after_header:
+            retry_after = self.get_retry_after(response)
+        if retry_after:
+            print(f"    BMC retry: status {response.status}, honoring Retry-After — sleeping {retry_after:.0f}s", flush=True)
+        else:
+            backoff = self.get_backoff_time()
+            if backoff > 0:
+                where = f"status {response.status}" if response is not None else "connection error"
+                print(f"    BMC retry: {where} — backing off {backoff:.1f}s", flush=True)
+        super().sleep(response)
 
 def create_session_with_retry(max_retries=5, backoff_factor=1):
     """
@@ -34,12 +71,16 @@ def create_session_with_retry(max_retries=5, backoff_factor=1):
     Returns:
         requests.Session configured with retry adapter
     """
-    retry = Retry(
+    retry = _LoggingRetry(
         total=max_retries,
         backoff_factor=backoff_factor,       # exponential backoff: 1s, 2s, 4s…
-        status_forcelist=[429],              # retry on rate limit
-        allowed_methods=['GET'],             # only retry GET requests
-        respect_retry_after_header=True,
+        # Don't auto-retry HTTP error statuses. BMC answers a 429 rate limit with
+        # Retry-After: 3600 — not job-friendly — so retrying/honoring it would
+        # block the build for up to an hour. We surface the 429 immediately and
+        # bail to fallback values in the caller instead.
+        status_forcelist=[],
+        allowed_methods=['GET'],             # only retry transient connection errors
+        respect_retry_after_header=False,
         raise_on_status=False,               # don't raise exceptions, return response
     )
     
@@ -186,21 +227,35 @@ def _response_error_snippet(response, limit=500):
         return body[:limit] + '... (truncated)'
     return body
 
-def get_buymeacoffee_stats():
-    """Fetch supporter statistics from Buy Me a Coffee API with pagination."""
-    # Fallback values in case API fails
-    fallback_stats = {
-        'total_amount': 912,
-        'supporter_count': 61,
-        'currency': '€'
-    }
+def _auth_hint(response):
+    """Flag the most common cause of a failed call: an expired/revoked token
+    returns 401/403, or — without an Accept: application/json header — the API
+    redirects to its login page instead of returning a clean 401."""
+    if response.status_code in (401, 403) or response.is_redirect:
+        return " Token may be expired or revoked — regenerate BUYMEACOFFEE_API_TOKEN."
+    return ""
 
+def _rate_limit_hint(response):
+    """For a 429, surface the Retry-After we're deliberately not honoring."""
+    if response.status_code == 429:
+        retry_after = response.headers.get('Retry-After')
+        return f" Rate-limited; Retry-After={retry_after}s is not job-friendly, bailing to fallback."
+    return ""
+
+def get_buymeacoffee_stats():
+    """Fetch supporter statistics from the Buy Me a Coffee API with pagination.
+
+    Returns a {'total_amount', 'supporter_count', 'currency'} dict on success, or
+    None on any failure so the caller can choose between a cached or default value.
+    """
     # Check if API token is available
     api_token = os.environ.get('BUYMEACOFFEE_API_TOKEN')
     if not api_token:
-        print("  No Buy Me a Coffee API token found, using fallback values")
-        return fallback_stats
+        print("  No Buy Me a Coffee API token found", flush=True)
+        return None
 
+    # Tracked out here so the error handlers below can report which page failed.
+    page = 1
     try:
         # Create session with retry configuration
         session = create_session_with_retry()
@@ -208,13 +263,13 @@ def get_buymeacoffee_stats():
         # Make API request to Buy Me a Coffee with pagination
         headers = {
             'Authorization': f'Bearer {api_token}',
-            'Content-Type': 'application/json'
+            'Accept': 'application/json',
         }
 
         all_supporters = []
-        page = 1
         page_size = 50  # Larger page size to get more results per request
         total_pages = 1  # Assume at least one page
+        start_time = time.monotonic()
 
         while True:
             params = {
@@ -222,16 +277,25 @@ def get_buymeacoffee_stats():
                 'per_page': page_size
             }
 
-            response = session.get(
-                'https://developers.buymeacoffee.com/api/v1/supporters',
-                headers=headers,
-                params=params,
-                timeout=10
-            )
+            # Logged and flushed *before* the request so a hang or timeout shows
+            # exactly which page stalled instead of the log going silent.
+            print(f"  Requesting supporters page {page}/{total_pages} (per_page={page_size}, timeout=10s)...", flush=True)
+
+            try:
+                response = session.get(
+                    'https://developers.buymeacoffee.com/api/v1/supporters',
+                    headers=headers,
+                    params=params,
+                    timeout=10,
+                    allow_redirects=False
+                )
+            except requests.Timeout:
+                print(f"  Buy Me a Coffee API timed out after 10s on page {page}", flush=True)
+                return None
 
             if response.status_code != 200:
-                print(f"  Buy Me a Coffee API returned status {response.status_code} on page {page}, using fallback values. Response body: {_response_error_snippet(response)}")
-                return fallback_stats
+                print(f"  Buy Me a Coffee API returned status {response.status_code} on page {page}.{_auth_hint(response)}{_rate_limit_hint(response)} Response body: {_response_error_snippet(response)}", flush=True)
+                return None
 
             data = response.json()
 
@@ -239,25 +303,19 @@ def get_buymeacoffee_stats():
                 # On the first request, get the total number of pages
                 total_pages = data.get('last_page', 1)
 
-            print(f"  Fetching page {page}/{total_pages}...")
-
             supporters = data.get('data', [])
-
-            if not supporters:
-                # No more supporters to fetch
-                break
-
             all_supporters.extend(supporters)
+            print(f"    page {page}/{total_pages}: received {len(supporters)} supporters (running total {len(all_supporters)})", flush=True)
 
-            # Check if we've reached the last page
-            if data.get('next_page_url') is None:
+            # Stop on an empty page or when the API reports no further pages.
+            if not supporters or data.get('next_page_url') is None:
                 break
 
             page += 1
 
             # Safety break to avoid infinite loops
             if page > 100:
-                print(f"  Warning: Stopped at page {page} to avoid infinite loop")
+                print(f"  Warning: Stopped at page {page} to avoid infinite loop", flush=True)
                 break
 
         # Calculate totals from all supporters
@@ -275,7 +333,8 @@ def get_buymeacoffee_stats():
                 # Skip this supporter if values can't be converted to numbers
                 continue
 
-        print(f"  Fetched Buy Me a Coffee stats: €{int(total_amount)} from {supporter_count} supporters ({page} pages)")
+        elapsed = time.monotonic() - start_time
+        print(f"  Fetched Buy Me a Coffee stats: €{int(total_amount)} from {supporter_count} supporters across {page} page(s) in {elapsed:.1f}s", flush=True)
 
         return {
             'total_amount': int(total_amount),
@@ -284,20 +343,26 @@ def get_buymeacoffee_stats():
         }
 
     except requests.RequestException as e:
-        print(f"  Error fetching Buy Me a Coffee stats: {e}, using fallback values")
-        return fallback_stats
+        print(f"  Error fetching Buy Me a Coffee stats on page {page}: {e}", flush=True)
+        return None
     except Exception as e:
-        print(f"  Unexpected error with Buy Me a Coffee API: {e}, using fallback values")
-        return fallback_stats
+        print(f"  Unexpected error with Buy Me a Coffee API on page {page}: {e}", flush=True)
+        return None
 
 def get_buymeacoffee_subscriptions():
-    """Fetch active monthly subscriptions from Buy Me a Coffee API with pagination."""
+    """Fetch active monthly subscriptions from the Buy Me a Coffee API.
+
+    Returns a list of supporter names on success (possibly empty), or None on any
+    failure so the caller can fall back to a cached or default value.
+    """
     # Check if API token is available
     api_token = os.environ.get('BUYMEACOFFEE_API_TOKEN')
     if not api_token:
-        print("  No Buy Me a Coffee API token found, skipping monthly supporters")
-        return []
+        print("  No Buy Me a Coffee API token found", flush=True)
+        return None
 
+    # Tracked out here so the error handlers below can report which page failed.
+    page = 1
     try:
         # Create session with retry configuration
         session = create_session_with_retry()
@@ -305,12 +370,13 @@ def get_buymeacoffee_subscriptions():
         # Make API request to Buy Me a Coffee subscriptions endpoint
         headers = {
             'Authorization': f'Bearer {api_token}',
-            'Content-Type': 'application/json'
+            'Accept': 'application/json',
         }
 
         all_subscriptions = []
-        page = 1
         page_size = 50  # Larger page size to get more results per request
+        total_pages = 1  # Assume at least one page
+        start_time = time.monotonic()
 
         while True:
             params = {
@@ -319,38 +385,45 @@ def get_buymeacoffee_subscriptions():
                 'status': 'active'
             }
 
-            response = session.get(
-                'https://developers.buymeacoffee.com/api/v1/subscriptions',
-                headers=headers,
-                params=params,
-                timeout=10
-            )
+            # Logged and flushed *before* the request so a hang or timeout shows
+            # exactly which page stalled instead of the log going silent.
+            print(f"  Requesting subscriptions page {page}/{total_pages} (per_page={page_size}, timeout=10s)...", flush=True)
+
+            try:
+                response = session.get(
+                    'https://developers.buymeacoffee.com/api/v1/subscriptions',
+                    headers=headers,
+                    params=params,
+                    timeout=10,
+                    allow_redirects=False
+                )
+            except requests.Timeout:
+                print(f"  Buy Me a Coffee subscriptions API timed out after 10s on page {page}", flush=True)
+                return None
 
             if response.status_code != 200:
-                print(f"  Buy Me a Coffee subscriptions API returned status {response.status_code} on page {page}, skipping monthly supporters. Response body: {_response_error_snippet(response)}")
-                return []
+                print(f"  Buy Me a Coffee subscriptions API returned status {response.status_code} on page {page}.{_auth_hint(response)}{_rate_limit_hint(response)} Response body: {_response_error_snippet(response)}", flush=True)
+                return None
 
             data = response.json()
 
-            print(f"  Fetching subscriptions page {page}...")
+            if page == 1:
+                # On the first request, get the total number of pages
+                total_pages = data.get('last_page', 1)
 
             subscriptions = data.get('data', [])
-
-            if not subscriptions:
-                # No more subscriptions to fetch
-                break
-
             all_subscriptions.extend(subscriptions)
+            print(f"    page {page}/{total_pages}: received {len(subscriptions)} subscriptions (running total {len(all_subscriptions)})", flush=True)
 
-            # Check if we've reached the last page
-            if data.get('next_page_url') is None:
+            # Stop on an empty page or when the API reports no further pages.
+            if not subscriptions or data.get('next_page_url') is None:
                 break
 
             page += 1
 
             # Safety break to avoid infinite loops
             if page > 100:
-                print(f"  Warning: Stopped at page {page} to avoid infinite loop")
+                print(f"  Warning: Stopped at page {page} to avoid infinite loop", flush=True)
                 break
 
         # Extract supporter names from subscriptions
@@ -360,16 +433,66 @@ def get_buymeacoffee_subscriptions():
             if name:
                 supporter_names.append(name)
 
-        print(f"  Fetched {len(supporter_names)} monthly supporters from Buy Me a Coffee")
+        elapsed = time.monotonic() - start_time
+        print(f"  Fetched {len(supporter_names)} monthly supporters from Buy Me a Coffee across {page} page(s) in {elapsed:.1f}s", flush=True)
 
         return supporter_names
 
     except requests.RequestException as e:
-        print(f"  Error fetching Buy Me a Coffee subscriptions: {e}, skipping monthly supporters")
-        return []
+        print(f"  Error fetching Buy Me a Coffee subscriptions on page {page}: {e}", flush=True)
+        return None
     except Exception as e:
-        print(f"  Unexpected error with Buy Me a Coffee subscriptions API: {e}, skipping monthly supporters")
-        return []
+        print(f"  Unexpected error with Buy Me a Coffee subscriptions API on page {page}: {e}", flush=True)
+        return None
+
+def _cache_path(name):
+    return os.path.join(CACHE_DIR, f'{name}.json')
+
+def _read_cache(name):
+    """Return the cached {'fetched_at', 'data'} entry, or None if missing/unreadable."""
+    try:
+        with open(_cache_path(name)) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return None
+
+def _write_cache(name, data):
+    """Persist `data` under `name` with the current UTC timestamp."""
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    with open(_cache_path(name), 'w') as f:
+        json.dump({'fetched_at': datetime.now(timezone.utc).isoformat(), 'data': data}, f, indent=2)
+
+def _cache_age(entry):
+    """Age of a cache entry; treat a missing/unparseable timestamp as infinitely old."""
+    try:
+        fetched_at = datetime.fromisoformat(entry['fetched_at'])
+    except (KeyError, TypeError, ValueError):
+        return timedelta.max
+    return datetime.now(timezone.utc) - fetched_at
+
+def _fetch_with_cache(name, fetch_fn, default, label, ttl=BMC_CACHE_TTL):
+    """Return cached data when it's within `ttl`, otherwise fetch fresh.
+
+    Each bucket (stats, subscriptions) is cached independently. On a failed fetch
+    (fetch_fn returns None) we reuse the last cached value, falling back to
+    `default` only when there is no cache at all.
+    """
+    entry = _read_cache(name)
+    if entry is not None and _cache_age(entry) < ttl:
+        print(f"  Using cached {label} (fetched {entry['fetched_at']}) — skipping BMC call", flush=True)
+        return entry['data']
+
+    data = fetch_fn()
+    if data is not None:
+        _write_cache(name, data)
+        return data
+
+    if entry is not None:
+        print(f"  {label} fetch failed; reusing last cached value from {entry['fetched_at']}", flush=True)
+        return entry['data']
+
+    print(f"  {label} fetch failed and no cache available; using built-in default", flush=True)
+    return default
 
 def download_pdf_from_url(url):
     """Downloads a PDF from a URL and returns the bytes."""
@@ -438,13 +561,13 @@ if __name__ == '__main__':
 
     os.makedirs(PREVIEW_DIR, exist_ok=True)
 
-    # Fetch Buy Me a Coffee supporter statistics
+    # Buy Me a Coffee supporter stats — cached between builds (see _fetch_with_cache)
     print("Fetching Buy Me a Coffee supporter statistics...")
-    supporter_stats = get_buymeacoffee_stats()
+    supporter_stats = _fetch_with_cache('stats', get_buymeacoffee_stats, DEFAULT_STATS, 'supporter stats')
 
-    # Fetch Buy Me a Coffee monthly subscriptions
+    # Buy Me a Coffee monthly supporters — cached separately
     print("Fetching Buy Me a Coffee monthly supporters...")
-    monthly_supporters = get_buymeacoffee_subscriptions()
+    monthly_supporters = _fetch_with_cache('subscriptions', get_buymeacoffee_subscriptions, DEFAULT_SUBSCRIPTIONS, 'monthly supporters')
 
     latest_update_time = None
 

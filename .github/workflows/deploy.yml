@@ -29,12 +29,13 @@ permissions:
   # Additional permissions for PR preview deployments
   pull-requests: write
 
-# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
-# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
-# PRs can run concurrently since they don't deploy
+# Production deploys (main / schedule / manual) share the 'pages' group and must
+# NOT cancel an in-progress run, so a deployment always finishes.
+# PR builds use a per-PR group and DO cancel in-progress runs, so a new push
+# supersedes the previous build instead of letting a stale one keep running.
 concurrency:
   group: ${{ github.event_name == 'pull_request' && format('build-pr-{0}', github.event.number) || 'pages' }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # Build job - runs on all triggers including PRs
@@ -52,6 +53,18 @@ jobs:
 
       - name: Install dependencies
         run: uv sync
+
+      # Persist Buy Me a Coffee data between runs so build.py hits the rate-limited
+      # API at most once per TTL (see _fetch_with_cache in build.py). The run_id key
+      # is always unique, so restore falls back to the most recent bmc-cache- entry
+      # and the post-job step always saves the updated cache.
+      - name: Cache Buy Me a Coffee data
+        uses: actions/cache@v4
+        with:
+          path: .bmc-cache
+          key: bmc-cache-${{ github.run_id }}
+          restore-keys: |
+            bmc-cache-
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2

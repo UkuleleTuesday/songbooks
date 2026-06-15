@@ -127,10 +127,8 @@ def test_get_buymeacoffee_stats_api_error(requests_mock):
     try:
         result = get_buymeacoffee_stats()
         
-        # Should return fallback values
-        assert result['total_amount'] == 912
-        assert result['supporter_count'] == 61
-        assert result['currency'] == '€'
+        # Failure returns None; the caller falls back to cache/default
+        assert result is None
     finally:
         # Clean up environment variable
         if 'BUYMEACOFFEE_API_TOKEN' in os.environ:
@@ -144,10 +142,8 @@ def test_get_buymeacoffee_stats_no_token():
     
     result = get_buymeacoffee_stats()
     
-    # Should return fallback values
-    assert result['total_amount'] == 912
-    assert result['supporter_count'] == 61
-    assert result['currency'] == '€'
+    # Failure returns None; the caller falls back to cache/default
+    assert result is None
 
 def test_get_buymeacoffee_stats_invalid_data(requests_mock):
     """Test Buy Me a Coffee API with invalid data types."""
@@ -328,8 +324,8 @@ def test_get_buymeacoffee_subscriptions_no_token():
     
     result = get_buymeacoffee_subscriptions()
     
-    # Should return empty list
-    assert result == []
+    # Failure returns None; the caller falls back to cache/default
+    assert result is None
 
 def test_get_buymeacoffee_subscriptions_api_error(requests_mock):
     """Test subscriptions API error handling."""
@@ -346,8 +342,8 @@ def test_get_buymeacoffee_subscriptions_api_error(requests_mock):
     try:
         result = get_buymeacoffee_subscriptions()
         
-        # Should return empty list
-        assert result == []
+        # Failure returns None; the caller falls back to cache/default
+        assert result is None
     finally:
         # Clean up environment variable
         if 'BUYMEACOFFEE_API_TOKEN' in os.environ:
@@ -619,8 +615,8 @@ def test_create_session_with_retry():
     adapter = session.adapters["https://"]
     assert adapter.max_retries.total == 3
     assert adapter.max_retries.backoff_factor == 2
-    assert 429 in adapter.max_retries.status_forcelist
-    assert adapter.max_retries.respect_retry_after_header is True
+    assert 429 not in adapter.max_retries.status_forcelist  # we bail on 429, not retry it
+    assert adapter.max_retries.respect_retry_after_header is False
     assert 'GET' in adapter.max_retries.allowed_methods
     assert adapter.max_retries.raise_on_status is False
 
@@ -646,6 +642,8 @@ def test_get_buymeacoffee_stats_success(requests_mock):
         # Should succeed on first try
         assert result['total_amount'] == 15  # 5 * 3
         assert result['supporter_count'] == 1
+        # Must request JSON so auth failures come back as a clean 401, not a login redirect
+        assert requests_mock.last_request.headers.get('Accept') == 'application/json'
     finally:
         if 'BUYMEACOFFEE_API_TOKEN' in os.environ:
             del os.environ['BUYMEACOFFEE_API_TOKEN']
@@ -663,13 +661,97 @@ def test_get_buymeacoffee_stats_fallback_on_error(requests_mock, capsys):
     try:
         result = get_buymeacoffee_stats()
 
-        # Should return fallback values
-        assert result['total_amount'] == 912
-        assert result['supporter_count'] == 61
+        # Failure returns None; the caller falls back to cache/default
+        assert result is None
         # The response body must be surfaced in logs for diagnosis
         captured = capsys.readouterr()
         assert 'status 502' in captured.out
         assert 'Bad Gateway: upstream timed out' in captured.out
+    finally:
+        if 'BUYMEACOFFEE_API_TOKEN' in os.environ:
+            del os.environ['BUYMEACOFFEE_API_TOKEN']
+
+
+def test_get_buymeacoffee_stats_401_flags_token(requests_mock, capsys):
+    """A 401 (expired/revoked token) should fall back and flag the token, not a phantom 502."""
+    os.environ['BUYMEACOFFEE_API_TOKEN'] = 'test-token'
+
+    base_url = 'https://developers.buymeacoffee.com/api/v1/supporters'
+
+    # Mirrors the real failure: with Accept: application/json the API returns a clean 401
+    requests_mock.get(base_url, status_code=401, json={'error': 'Unauthenticated.'})
+
+    try:
+        result = get_buymeacoffee_stats()
+
+        # Returns None; the log points at the token rather than a misleading gateway error
+        assert result is None
+        captured = capsys.readouterr()
+        assert 'status 401' in captured.out
+        assert 'Unauthenticated' in captured.out
+        assert 'regenerate BUYMEACOFFEE_API_TOKEN' in captured.out
+    finally:
+        if 'BUYMEACOFFEE_API_TOKEN' in os.environ:
+            del os.environ['BUYMEACOFFEE_API_TOKEN']
+
+
+def test_get_buymeacoffee_stats_429_bails_with_retry_after(requests_mock, capsys):
+    """A 429 bails to fallback immediately and logs the (unhonored) Retry-After."""
+    os.environ['BUYMEACOFFEE_API_TOKEN'] = 'test-token'
+
+    base_url = 'https://developers.buymeacoffee.com/api/v1/supporters'
+    requests_mock.get(base_url, status_code=429, headers={'Retry-After': '3600'}, json={'error': 'Too Many Requests'})
+
+    try:
+        result = get_buymeacoffee_stats()
+
+        assert result is None  # bailed, no waiting
+        out = capsys.readouterr().out
+        assert 'status 429' in out
+        assert 'Retry-After=3600' in out
+        assert 'bailing to fallback' in out
+    finally:
+        if 'BUYMEACOFFEE_API_TOKEN' in os.environ:
+            del os.environ['BUYMEACOFFEE_API_TOKEN']
+
+
+def test_get_buymeacoffee_stats_timeout_logs_page(requests_mock, capsys):
+    """A request timeout falls back and logs which page timed out."""
+    import requests
+    os.environ['BUYMEACOFFEE_API_TOKEN'] = 'test-token'
+
+    base_url = 'https://developers.buymeacoffee.com/api/v1/supporters'
+    requests_mock.get(base_url, exc=requests.exceptions.Timeout)
+
+    try:
+        result = get_buymeacoffee_stats()
+
+        assert result is None  # failed fetch
+        captured = capsys.readouterr()
+        assert 'timed out after 10s on page 1' in captured.out
+    finally:
+        if 'BUYMEACOFFEE_API_TOKEN' in os.environ:
+            del os.environ['BUYMEACOFFEE_API_TOKEN']
+
+
+def test_get_buymeacoffee_stats_logs_progress(requests_mock, capsys):
+    """A successful fetch logs per-page progress (with running totals) and elapsed time."""
+    os.environ['BUYMEACOFFEE_API_TOKEN'] = 'test-token'
+
+    base_url = 'https://developers.buymeacoffee.com/api/v1/supporters'
+    requests_mock.get(
+        base_url,
+        json={'data': [{'support_coffees': '3', 'support_coffee_price': '3'}], 'next_page_url': None},
+        status_code=200,
+    )
+
+    try:
+        get_buymeacoffee_stats()
+
+        out = capsys.readouterr().out
+        assert 'Requesting supporters page 1' in out   # progress, printed before the request
+        assert 'running total 1' in out                # per-page running total
+        assert 'page(s) in' in out                     # elapsed-time summary
     finally:
         if 'BUYMEACOFFEE_API_TOKEN' in os.environ:
             del os.environ['BUYMEACOFFEE_API_TOKEN']
@@ -713,8 +795,8 @@ def test_get_buymeacoffee_subscriptions_empty_on_error(requests_mock, capsys):
     try:
         result = get_buymeacoffee_subscriptions()
 
-        # Should return empty list
-        assert result == []
+        # Failure returns None; the caller falls back to cache/default
+        assert result is None
         # The response body must be surfaced in logs for diagnosis
         captured = capsys.readouterr()
         assert 'status 502' in captured.out
@@ -722,6 +804,74 @@ def test_get_buymeacoffee_subscriptions_empty_on_error(requests_mock, capsys):
     finally:
         if 'BUYMEACOFFEE_API_TOKEN' in os.environ:
             del os.environ['BUYMEACOFFEE_API_TOKEN']
+
+
+def test_logging_retry_announces_retry_after(capsys, monkeypatch):
+    """The retry logs each wait, so a rate-limited request isn't a silent gap."""
+    import time
+    from unittest.mock import MagicMock
+    from build import _LoggingRetry
+
+    # Don't actually sleep through the Retry-After during the test.
+    monkeypatch.setattr(time, 'sleep', lambda *a, **k: None)
+
+    retry = _LoggingRetry(total=5, status_forcelist=[429], respect_retry_after_header=True)
+    response = MagicMock(status=429, headers={'Retry-After': '5'})
+    retry.sleep(response)
+
+    out = capsys.readouterr().out
+    assert 'status 429' in out
+    assert 'Retry-After' in out
+    assert 'sleeping 5s' in out
+
+
+def test_fetch_with_cache_uses_fresh_cache(tmp_path, monkeypatch):
+    """A fresh cache is used and the fetcher is not called."""
+    import build
+    monkeypatch.setattr(build, 'CACHE_DIR', str(tmp_path))
+    build._write_cache('stats', {'total_amount': 500, 'supporter_count': 25, 'currency': '€'})
+
+    called = []
+    def fetch():
+        called.append(True)
+        return {'total_amount': 999, 'supporter_count': 99, 'currency': '€'}
+
+    result = build._fetch_with_cache('stats', fetch, build.DEFAULT_STATS, 'supporter stats')
+    assert result == {'total_amount': 500, 'supporter_count': 25, 'currency': '€'}
+    assert called == []  # fetcher skipped
+
+
+def test_fetch_with_cache_refetches_when_stale(tmp_path, monkeypatch):
+    """A missing cache triggers a fresh fetch, which is then persisted."""
+    import build
+    monkeypatch.setattr(build, 'CACHE_DIR', str(tmp_path))
+
+    fresh = {'total_amount': 999, 'supporter_count': 99, 'currency': '€'}
+    result = build._fetch_with_cache('stats', lambda: fresh, build.DEFAULT_STATS, 'supporter stats')
+
+    assert result == fresh
+    assert build._read_cache('stats')['data'] == fresh
+
+
+def test_fetch_with_cache_reuses_stale_on_failure(tmp_path, monkeypatch):
+    """When the fetch fails (None) but a cache exists, reuse the cached value."""
+    import build
+    monkeypatch.setattr(build, 'CACHE_DIR', str(tmp_path))
+    build._write_cache('subscriptions', ['Alice', 'Bob'])
+    # Force the entry to look stale so a fetch is attempted.
+    monkeypatch.setattr(build, '_cache_age', lambda entry: build.timedelta(days=999))
+
+    result = build._fetch_with_cache('subscriptions', lambda: None, build.DEFAULT_SUBSCRIPTIONS, 'monthly supporters')
+    assert result == ['Alice', 'Bob']
+
+
+def test_fetch_with_cache_falls_back_to_default(tmp_path, monkeypatch):
+    """No cache plus a failed fetch falls back to the built-in default."""
+    import build
+    monkeypatch.setattr(build, 'CACHE_DIR', str(tmp_path))
+
+    result = build._fetch_with_cache('stats', lambda: None, build.DEFAULT_STATS, 'supporter stats')
+    assert result == build.DEFAULT_STATS
 
 
 if __name__ == '__main__':
