@@ -700,6 +700,48 @@ def test_get_buymeacoffee_stats_401_flags_token(requests_mock, capsys):
             del os.environ['BUYMEACOFFEE_API_TOKEN']
 
 
+def test_get_buymeacoffee_stats_timeout_logs_page(requests_mock, capsys):
+    """A request timeout falls back and logs which page timed out."""
+    import requests
+    os.environ['BUYMEACOFFEE_API_TOKEN'] = 'test-token'
+
+    base_url = 'https://developers.buymeacoffee.com/api/v1/supporters'
+    requests_mock.get(base_url, exc=requests.exceptions.Timeout)
+
+    try:
+        result = get_buymeacoffee_stats()
+
+        assert result['total_amount'] == 912  # fallback
+        captured = capsys.readouterr()
+        assert 'timed out after 10s on page 1' in captured.out
+    finally:
+        if 'BUYMEACOFFEE_API_TOKEN' in os.environ:
+            del os.environ['BUYMEACOFFEE_API_TOKEN']
+
+
+def test_get_buymeacoffee_stats_logs_progress(requests_mock, capsys):
+    """A successful fetch logs per-page progress (with running totals) and elapsed time."""
+    os.environ['BUYMEACOFFEE_API_TOKEN'] = 'test-token'
+
+    base_url = 'https://developers.buymeacoffee.com/api/v1/supporters'
+    requests_mock.get(
+        base_url,
+        json={'data': [{'support_coffees': '3', 'support_coffee_price': '3'}], 'next_page_url': None},
+        status_code=200,
+    )
+
+    try:
+        get_buymeacoffee_stats()
+
+        out = capsys.readouterr().out
+        assert 'Requesting supporters page 1' in out   # progress, printed before the request
+        assert 'running total 1' in out                # per-page running total
+        assert 'page(s) in' in out                     # elapsed-time summary
+    finally:
+        if 'BUYMEACOFFEE_API_TOKEN' in os.environ:
+            del os.environ['BUYMEACOFFEE_API_TOKEN']
+
+
 def test_get_buymeacoffee_subscriptions_success(requests_mock):
     """Test successful API call for subscriptions."""
     os.environ['BUYMEACOFFEE_API_TOKEN'] = 'test-token'

@@ -2,6 +2,7 @@ import os
 import io
 import shutil
 import json
+import time
 import yaml
 from datetime import datetime, timezone
 import fitz  # PyMuPDF
@@ -209,6 +210,8 @@ def get_buymeacoffee_stats():
         print("  No Buy Me a Coffee API token found, using fallback values")
         return fallback_stats
 
+    # Tracked out here so the error handlers below can report which page failed.
+    page = 1
     try:
         # Create session with retry configuration
         session = create_session_with_retry()
@@ -220,9 +223,9 @@ def get_buymeacoffee_stats():
         }
 
         all_supporters = []
-        page = 1
         page_size = 50  # Larger page size to get more results per request
         total_pages = 1  # Assume at least one page
+        start_time = time.monotonic()
 
         while True:
             params = {
@@ -230,16 +233,24 @@ def get_buymeacoffee_stats():
                 'per_page': page_size
             }
 
-            response = session.get(
-                'https://developers.buymeacoffee.com/api/v1/supporters',
-                headers=headers,
-                params=params,
-                timeout=10,
-                allow_redirects=False
-            )
+            # Logged and flushed *before* the request so a hang or timeout shows
+            # exactly which page stalled instead of the log going silent.
+            print(f"  Requesting supporters page {page}/{total_pages} (per_page={page_size}, timeout=10s)...", flush=True)
+
+            try:
+                response = session.get(
+                    'https://developers.buymeacoffee.com/api/v1/supporters',
+                    headers=headers,
+                    params=params,
+                    timeout=10,
+                    allow_redirects=False
+                )
+            except requests.Timeout:
+                print(f"  Buy Me a Coffee API timed out after 10s on page {page}, using fallback values", flush=True)
+                return fallback_stats
 
             if response.status_code != 200:
-                print(f"  Buy Me a Coffee API returned status {response.status_code} on page {page}, using fallback values.{_auth_hint(response)} Response body: {_response_error_snippet(response)}")
+                print(f"  Buy Me a Coffee API returned status {response.status_code} on page {page}, using fallback values.{_auth_hint(response)} Response body: {_response_error_snippet(response)}", flush=True)
                 return fallback_stats
 
             data = response.json()
@@ -248,25 +259,19 @@ def get_buymeacoffee_stats():
                 # On the first request, get the total number of pages
                 total_pages = data.get('last_page', 1)
 
-            print(f"  Fetching page {page}/{total_pages}...")
-
             supporters = data.get('data', [])
-
-            if not supporters:
-                # No more supporters to fetch
-                break
-
             all_supporters.extend(supporters)
+            print(f"    page {page}/{total_pages}: received {len(supporters)} supporters (running total {len(all_supporters)})", flush=True)
 
-            # Check if we've reached the last page
-            if data.get('next_page_url') is None:
+            # Stop on an empty page or when the API reports no further pages.
+            if not supporters or data.get('next_page_url') is None:
                 break
 
             page += 1
 
             # Safety break to avoid infinite loops
             if page > 100:
-                print(f"  Warning: Stopped at page {page} to avoid infinite loop")
+                print(f"  Warning: Stopped at page {page} to avoid infinite loop", flush=True)
                 break
 
         # Calculate totals from all supporters
@@ -284,7 +289,8 @@ def get_buymeacoffee_stats():
                 # Skip this supporter if values can't be converted to numbers
                 continue
 
-        print(f"  Fetched Buy Me a Coffee stats: €{int(total_amount)} from {supporter_count} supporters ({page} pages)")
+        elapsed = time.monotonic() - start_time
+        print(f"  Fetched Buy Me a Coffee stats: €{int(total_amount)} from {supporter_count} supporters across {page} page(s) in {elapsed:.1f}s", flush=True)
 
         return {
             'total_amount': int(total_amount),
@@ -293,10 +299,10 @@ def get_buymeacoffee_stats():
         }
 
     except requests.RequestException as e:
-        print(f"  Error fetching Buy Me a Coffee stats: {e}, using fallback values")
+        print(f"  Error fetching Buy Me a Coffee stats on page {page}: {e}, using fallback values", flush=True)
         return fallback_stats
     except Exception as e:
-        print(f"  Unexpected error with Buy Me a Coffee API: {e}, using fallback values")
+        print(f"  Unexpected error with Buy Me a Coffee API on page {page}: {e}, using fallback values", flush=True)
         return fallback_stats
 
 def get_buymeacoffee_subscriptions():
@@ -307,6 +313,8 @@ def get_buymeacoffee_subscriptions():
         print("  No Buy Me a Coffee API token found, skipping monthly supporters")
         return []
 
+    # Tracked out here so the error handlers below can report which page failed.
+    page = 1
     try:
         # Create session with retry configuration
         session = create_session_with_retry()
@@ -318,8 +326,9 @@ def get_buymeacoffee_subscriptions():
         }
 
         all_subscriptions = []
-        page = 1
         page_size = 50  # Larger page size to get more results per request
+        total_pages = 1  # Assume at least one page
+        start_time = time.monotonic()
 
         while True:
             params = {
@@ -328,39 +337,45 @@ def get_buymeacoffee_subscriptions():
                 'status': 'active'
             }
 
-            response = session.get(
-                'https://developers.buymeacoffee.com/api/v1/subscriptions',
-                headers=headers,
-                params=params,
-                timeout=10,
-                allow_redirects=False
-            )
+            # Logged and flushed *before* the request so a hang or timeout shows
+            # exactly which page stalled instead of the log going silent.
+            print(f"  Requesting subscriptions page {page}/{total_pages} (per_page={page_size}, timeout=10s)...", flush=True)
+
+            try:
+                response = session.get(
+                    'https://developers.buymeacoffee.com/api/v1/subscriptions',
+                    headers=headers,
+                    params=params,
+                    timeout=10,
+                    allow_redirects=False
+                )
+            except requests.Timeout:
+                print(f"  Buy Me a Coffee subscriptions API timed out after 10s on page {page}, skipping monthly supporters", flush=True)
+                return []
 
             if response.status_code != 200:
-                print(f"  Buy Me a Coffee subscriptions API returned status {response.status_code} on page {page}, skipping monthly supporters.{_auth_hint(response)} Response body: {_response_error_snippet(response)}")
+                print(f"  Buy Me a Coffee subscriptions API returned status {response.status_code} on page {page}, skipping monthly supporters.{_auth_hint(response)} Response body: {_response_error_snippet(response)}", flush=True)
                 return []
 
             data = response.json()
 
-            print(f"  Fetching subscriptions page {page}...")
+            if page == 1:
+                # On the first request, get the total number of pages
+                total_pages = data.get('last_page', 1)
 
             subscriptions = data.get('data', [])
-
-            if not subscriptions:
-                # No more subscriptions to fetch
-                break
-
             all_subscriptions.extend(subscriptions)
+            print(f"    page {page}/{total_pages}: received {len(subscriptions)} subscriptions (running total {len(all_subscriptions)})", flush=True)
 
-            # Check if we've reached the last page
-            if data.get('next_page_url') is None:
+            # Stop on an empty page or when the API reports no further pages.
+            if not subscriptions or data.get('next_page_url') is None:
                 break
 
             page += 1
 
             # Safety break to avoid infinite loops
             if page > 100:
-                print(f"  Warning: Stopped at page {page} to avoid infinite loop")
+                print(f"  Warning: Stopped at page {page} to avoid infinite loop", flush=True)
                 break
 
         # Extract supporter names from subscriptions
@@ -370,15 +385,16 @@ def get_buymeacoffee_subscriptions():
             if name:
                 supporter_names.append(name)
 
-        print(f"  Fetched {len(supporter_names)} monthly supporters from Buy Me a Coffee")
+        elapsed = time.monotonic() - start_time
+        print(f"  Fetched {len(supporter_names)} monthly supporters from Buy Me a Coffee across {page} page(s) in {elapsed:.1f}s", flush=True)
 
         return supporter_names
 
     except requests.RequestException as e:
-        print(f"  Error fetching Buy Me a Coffee subscriptions: {e}, skipping monthly supporters")
+        print(f"  Error fetching Buy Me a Coffee subscriptions on page {page}: {e}, skipping monthly supporters", flush=True)
         return []
     except Exception as e:
-        print(f"  Unexpected error with Buy Me a Coffee subscriptions API: {e}, skipping monthly supporters")
+        print(f"  Unexpected error with Buy Me a Coffee subscriptions API on page {page}: {e}, skipping monthly supporters", flush=True)
         return []
 
 def download_pdf_from_url(url):
