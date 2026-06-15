@@ -186,6 +186,14 @@ def _response_error_snippet(response, limit=500):
         return body[:limit] + '... (truncated)'
     return body
 
+def _auth_hint(response):
+    """Flag the most common cause of a failed call: an expired/revoked token
+    returns 401/403, or — without an Accept: application/json header — the API
+    redirects to its login page instead of returning a clean 401."""
+    if response.status_code in (401, 403) or response.is_redirect:
+        return " Token may be expired or revoked — regenerate BUYMEACOFFEE_API_TOKEN."
+    return ""
+
 def get_buymeacoffee_stats():
     """Fetch supporter statistics from Buy Me a Coffee API with pagination."""
     # Fallback values in case API fails
@@ -208,7 +216,7 @@ def get_buymeacoffee_stats():
         # Make API request to Buy Me a Coffee with pagination
         headers = {
             'Authorization': f'Bearer {api_token}',
-            'Content-Type': 'application/json'
+            'Accept': 'application/json',
         }
 
         all_supporters = []
@@ -226,11 +234,12 @@ def get_buymeacoffee_stats():
                 'https://developers.buymeacoffee.com/api/v1/supporters',
                 headers=headers,
                 params=params,
-                timeout=10
+                timeout=10,
+                allow_redirects=False
             )
 
             if response.status_code != 200:
-                print(f"  Buy Me a Coffee API returned status {response.status_code} on page {page}, using fallback values. Response body: {_response_error_snippet(response)}")
+                print(f"  Buy Me a Coffee API returned status {response.status_code} on page {page}, using fallback values.{_auth_hint(response)} Response body: {_response_error_snippet(response)}")
                 return fallback_stats
 
             data = response.json()
@@ -305,7 +314,7 @@ def get_buymeacoffee_subscriptions():
         # Make API request to Buy Me a Coffee subscriptions endpoint
         headers = {
             'Authorization': f'Bearer {api_token}',
-            'Content-Type': 'application/json'
+            'Accept': 'application/json',
         }
 
         all_subscriptions = []
@@ -323,11 +332,12 @@ def get_buymeacoffee_subscriptions():
                 'https://developers.buymeacoffee.com/api/v1/subscriptions',
                 headers=headers,
                 params=params,
-                timeout=10
+                timeout=10,
+                allow_redirects=False
             )
 
             if response.status_code != 200:
-                print(f"  Buy Me a Coffee subscriptions API returned status {response.status_code} on page {page}, skipping monthly supporters. Response body: {_response_error_snippet(response)}")
+                print(f"  Buy Me a Coffee subscriptions API returned status {response.status_code} on page {page}, skipping monthly supporters.{_auth_hint(response)} Response body: {_response_error_snippet(response)}")
                 return []
 
             data = response.json()

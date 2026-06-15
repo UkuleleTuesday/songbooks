@@ -646,6 +646,8 @@ def test_get_buymeacoffee_stats_success(requests_mock):
         # Should succeed on first try
         assert result['total_amount'] == 15  # 5 * 3
         assert result['supporter_count'] == 1
+        # Must request JSON so auth failures come back as a clean 401, not a login redirect
+        assert requests_mock.last_request.headers.get('Accept') == 'application/json'
     finally:
         if 'BUYMEACOFFEE_API_TOKEN' in os.environ:
             del os.environ['BUYMEACOFFEE_API_TOKEN']
@@ -670,6 +672,29 @@ def test_get_buymeacoffee_stats_fallback_on_error(requests_mock, capsys):
         captured = capsys.readouterr()
         assert 'status 502' in captured.out
         assert 'Bad Gateway: upstream timed out' in captured.out
+    finally:
+        if 'BUYMEACOFFEE_API_TOKEN' in os.environ:
+            del os.environ['BUYMEACOFFEE_API_TOKEN']
+
+
+def test_get_buymeacoffee_stats_401_flags_token(requests_mock, capsys):
+    """A 401 (expired/revoked token) should fall back and flag the token, not a phantom 502."""
+    os.environ['BUYMEACOFFEE_API_TOKEN'] = 'test-token'
+
+    base_url = 'https://developers.buymeacoffee.com/api/v1/supporters'
+
+    # Mirrors the real failure: with Accept: application/json the API returns a clean 401
+    requests_mock.get(base_url, status_code=401, json={'error': 'Unauthenticated.'})
+
+    try:
+        result = get_buymeacoffee_stats()
+
+        # Falls back, and the log points at the token rather than a misleading gateway error
+        assert result['total_amount'] == 912
+        captured = capsys.readouterr()
+        assert 'status 401' in captured.out
+        assert 'Unauthenticated' in captured.out
+        assert 'regenerate BUYMEACOFFEE_API_TOKEN' in captured.out
     finally:
         if 'BUYMEACOFFEE_API_TOKEN' in os.environ:
             del os.environ['BUYMEACOFFEE_API_TOKEN']
