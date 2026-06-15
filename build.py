@@ -66,9 +66,13 @@ def create_session_with_retry(max_retries=5, backoff_factor=1):
     retry = _LoggingRetry(
         total=max_retries,
         backoff_factor=backoff_factor,       # exponential backoff: 1s, 2s, 4s…
-        status_forcelist=[429],              # retry on rate limit
-        allowed_methods=['GET'],             # only retry GET requests
-        respect_retry_after_header=True,
+        # Don't auto-retry HTTP error statuses. BMC answers a 429 rate limit with
+        # Retry-After: 3600 — not job-friendly — so retrying/honoring it would
+        # block the build for up to an hour. We surface the 429 immediately and
+        # bail to fallback values in the caller instead.
+        status_forcelist=[],
+        allowed_methods=['GET'],             # only retry transient connection errors
+        respect_retry_after_header=False,
         raise_on_status=False,               # don't raise exceptions, return response
     )
     
@@ -223,6 +227,13 @@ def _auth_hint(response):
         return " Token may be expired or revoked — regenerate BUYMEACOFFEE_API_TOKEN."
     return ""
 
+def _rate_limit_hint(response):
+    """For a 429, surface the Retry-After we're deliberately not honoring."""
+    if response.status_code == 429:
+        retry_after = response.headers.get('Retry-After')
+        return f" Rate-limited; Retry-After={retry_after}s is not job-friendly, bailing to fallback."
+    return ""
+
 def get_buymeacoffee_stats():
     """Fetch supporter statistics from Buy Me a Coffee API with pagination."""
     # Fallback values in case API fails
@@ -278,7 +289,7 @@ def get_buymeacoffee_stats():
                 return fallback_stats
 
             if response.status_code != 200:
-                print(f"  Buy Me a Coffee API returned status {response.status_code} on page {page}, using fallback values.{_auth_hint(response)} Response body: {_response_error_snippet(response)}", flush=True)
+                print(f"  Buy Me a Coffee API returned status {response.status_code} on page {page}, using fallback values.{_auth_hint(response)}{_rate_limit_hint(response)} Response body: {_response_error_snippet(response)}", flush=True)
                 return fallback_stats
 
             data = response.json()
@@ -382,7 +393,7 @@ def get_buymeacoffee_subscriptions():
                 return []
 
             if response.status_code != 200:
-                print(f"  Buy Me a Coffee subscriptions API returned status {response.status_code} on page {page}, skipping monthly supporters.{_auth_hint(response)} Response body: {_response_error_snippet(response)}", flush=True)
+                print(f"  Buy Me a Coffee subscriptions API returned status {response.status_code} on page {page}, skipping monthly supporters.{_auth_hint(response)}{_rate_limit_hint(response)} Response body: {_response_error_snippet(response)}", flush=True)
                 return []
 
             data = response.json()

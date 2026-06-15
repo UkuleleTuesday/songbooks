@@ -619,8 +619,8 @@ def test_create_session_with_retry():
     adapter = session.adapters["https://"]
     assert adapter.max_retries.total == 3
     assert adapter.max_retries.backoff_factor == 2
-    assert 429 in adapter.max_retries.status_forcelist
-    assert adapter.max_retries.respect_retry_after_header is True
+    assert 429 not in adapter.max_retries.status_forcelist  # we bail on 429, not retry it
+    assert adapter.max_retries.respect_retry_after_header is False
     assert 'GET' in adapter.max_retries.allowed_methods
     assert adapter.max_retries.raise_on_status is False
 
@@ -695,6 +695,26 @@ def test_get_buymeacoffee_stats_401_flags_token(requests_mock, capsys):
         assert 'status 401' in captured.out
         assert 'Unauthenticated' in captured.out
         assert 'regenerate BUYMEACOFFEE_API_TOKEN' in captured.out
+    finally:
+        if 'BUYMEACOFFEE_API_TOKEN' in os.environ:
+            del os.environ['BUYMEACOFFEE_API_TOKEN']
+
+
+def test_get_buymeacoffee_stats_429_bails_with_retry_after(requests_mock, capsys):
+    """A 429 bails to fallback immediately and logs the (unhonored) Retry-After."""
+    os.environ['BUYMEACOFFEE_API_TOKEN'] = 'test-token'
+
+    base_url = 'https://developers.buymeacoffee.com/api/v1/supporters'
+    requests_mock.get(base_url, status_code=429, headers={'Retry-After': '3600'}, json={'error': 'Too Many Requests'})
+
+    try:
+        result = get_buymeacoffee_stats()
+
+        assert result['total_amount'] == 912  # fallback, no waiting
+        out = capsys.readouterr().out
+        assert 'status 429' in out
+        assert 'Retry-After=3600' in out
+        assert 'bailing to fallback' in out
     finally:
         if 'BUYMEACOFFEE_API_TOKEN' in os.environ:
             del os.environ['BUYMEACOFFEE_API_TOKEN']
