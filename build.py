@@ -19,6 +19,9 @@ PREVIEW_DIR = os.path.join(OUTPUT_DIR, 'previews')
 TEMPLATE_DIR = 'templates'
 TEMPLATE_FILE = 'index.html.j2'
 EDITIONS_FILE = 'editions.yml'
+# Number of older changelog entries to list under the latest change in the
+# "What's new" panel (the most recent change is always shown in full).
+CHANGELOG_HISTORY_LIMIT = 10
 
 def create_session_with_retry(max_retries=5, backoff_factor=1):
     """
@@ -96,22 +99,77 @@ def get_edition_manifest(bucket, edition_name, manifest_filename):
         print(f"  Could not fetch or parse manifest {blob_name}: {e}")
         return None
 
-def extract_changelog(manifest):
-    """Extracts the added/removed song lists from a manifest's changelog object.
+def get_edition_changes(bucket, edition_name):
+    """Fetches and parses an edition's changes.json.
 
-    Returns a dict with 'added' and 'removed' lists, or None if the manifest has
-    no changelog or the changelog has no additions or removals.
+    changes.json is the append-only changelog history maintained by the
+    songbook-generator: a dict with an 'entries' list ordered newest-first,
+    each entry describing the songs added/removed in a publish.
     """
-    if not manifest:
+    blob_name = f"{edition_name}/changes.json"
+    blob = bucket.blob(blob_name)
+    try:
+        changes_url = f"https://storage.googleapis.com/{bucket.name}/{blob_name}"
+        print(f"  Fetching changes from: {changes_url}")
+        data = blob.download_as_text()
+        return json.loads(data)
+    except Exception as e:
+        print(f"  Could not fetch or parse changes {blob_name}: {e}")
         return None
-    changelog = manifest.get('changelog')
-    if not changelog:
+
+def format_changelog_date(generated_at):
+    """Formats an ISO 8601 timestamp into a short date like '9 Jun 2026'.
+
+    Returns an empty string if the timestamp is missing or unparseable.
+    """
+    if not generated_at:
+        return ''
+    try:
+        dt = datetime.fromisoformat(generated_at.replace('Z', '+00:00'))
+    except (ValueError, AttributeError):
+        return ''
+    return f"{dt.day} {dt:%b %Y}"
+
+def _changelog_entry(entry):
+    """Shapes one changes.json entry for display: a date plus the song lists
+    added and removed."""
+    return {
+        'date': format_changelog_date(entry.get('generated_at')),
+        'added': entry.get('added', []),
+        'removed': entry.get('removed', []),
+    }
+
+def build_changelog(changes, history_limit=CHANGELOG_HISTORY_LIMIT):
+    """Builds the "What's new" panel data from an edition's changes.json.
+
+    Surfaces the most recent change followed by a short history of earlier
+    changes, each shaped identically (a date plus the songs added/removed). The
+    'entries' in `changes` are expected newest-first, as published by the
+    generator.
+
+    Returns a dict shaped like::
+
+        {
+            'latest': {'date': '9 Jun 2026', 'added': [...], 'removed': [...]},
+            'earlier': [{'date': '2 Jun 2026', 'added': [...], 'removed': [...]}, ...],
+        }
+
+    or None when there are no entries with any additions or removals.
+    """
+    if not changes:
         return None
-    added = changelog.get('added', [])
-    removed = changelog.get('removed', [])
-    if not added and not removed:
+
+    entries = [
+        entry for entry in changes.get('entries', [])
+        if entry.get('added') or entry.get('removed')
+    ]
+    if not entries:
         return None
-    return {'added': added, 'removed': removed}
+
+    return {
+        'latest': _changelog_entry(entries[0]),
+        'earlier': [_changelog_entry(entry) for entry in entries[1:1 + history_limit]],
+    }
 
 def get_buymeacoffee_stats():
     """Fetch supporter statistics from Buy Me a Coffee API with pagination."""
@@ -387,10 +445,12 @@ if __name__ == '__main__':
             continue
 
         changelog = None
+        if show_changelog:
+            changes = get_edition_changes(bucket, edition_name)
+            changelog = build_changelog(changes)
+
         if 'manifest_filename' in latest_info:
             manifest = get_edition_manifest(bucket, edition_name, latest_info['manifest_filename'])
-            if show_changelog:
-                changelog = extract_changelog(manifest)
             if manifest and 'generated_at' in manifest:
                 generated_at_str = manifest['generated_at']
                 try:

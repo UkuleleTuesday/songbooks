@@ -10,7 +10,7 @@ import yaml
 from unittest.mock import MagicMock
 
 # Import functions from build.py for testing
-from build import get_buymeacoffee_stats, get_buymeacoffee_subscriptions, render_index, get_editions_config, get_latest_edition_info, get_edition_manifest, create_session_with_retry, extract_changelog
+from build import get_buymeacoffee_stats, get_buymeacoffee_subscriptions, render_index, get_editions_config, get_latest_edition_info, get_edition_manifest, create_session_with_retry, get_edition_changes, build_changelog, format_changelog_date
 
 
 @pytest.fixture
@@ -403,29 +403,104 @@ def test_render_index_with_monthly_supporters(sample_files, sample_supporter_sta
     assert 'Jane Smith' in html
     assert 'Bob Wilson' in html
 
-def test_extract_changelog():
-    """Test extracting added/removed songs from a manifest's changelog."""
-    # Manifest with a changelog containing additions and removals
-    manifest = {
-        'changelog': {
-            'added': ['New Song - Artist A', 'Another One - Artist B'],
-            'removed': ['Old Song - Artist C'],
-        }
+def test_get_edition_changes():
+    """Test fetching and parsing an edition's changes.json."""
+    mock_bucket = MagicMock()
+    mock_bucket.name = 'test-bucket'
+    mock_blob = MagicMock()
+
+    changes_content = json.dumps({
+        'edition': 'current',
+        'entries': [
+            {'generated_at': '2026-06-09T10:48:10+00:00', 'added': ['A - B'], 'removed': []},
+        ],
+    })
+    mock_blob.download_as_text.return_value = changes_content
+    mock_bucket.blob.return_value = mock_blob
+
+    changes = get_edition_changes(mock_bucket, 'current')
+    assert changes['edition'] == 'current'
+    assert len(changes['entries']) == 1
+
+    # Verify it fetches the expected blob path.
+    mock_bucket.blob.assert_called_with('current/changes.json')
+
+    # Mock failed fetch (e.g., blob not found)
+    mock_blob.download_as_text.side_effect = Exception("Not Found")
+    assert get_edition_changes(mock_bucket, 'current') is None
+
+
+def test_format_changelog_date():
+    """Test formatting an ISO timestamp into a short date."""
+    assert format_changelog_date('2026-06-09T10:48:10.406245+00:00') == '9 Jun 2026'
+    assert format_changelog_date('2026-12-25T00:00:00Z') == '25 Dec 2026'
+    # Missing or unparseable timestamps fall back to an empty string.
+    assert format_changelog_date(None) == ''
+    assert format_changelog_date('') == ''
+    assert format_changelog_date('not-a-date') == ''
+
+
+def test_build_changelog():
+    """Test building the 'What's new' panel data from changes.json."""
+    changes = {
+        'edition': 'current',
+        'entries': [
+            {
+                'generated_at': '2026-06-09T10:48:10+00:00',
+                'added': ['New Song - Artist A', 'Another One - Artist B'],
+                'removed': ['Old Song - Artist C'],
+                'added_count': 2,
+                'removed_count': 1,
+            },
+            {
+                'generated_at': '2026-06-02T15:23:23+00:00',
+                'added': ['Hey Jude - The Beatles'],
+                'removed': [],
+                'added_count': 1,
+                'removed_count': 0,
+            },
+        ],
     }
-    result = extract_changelog(manifest)
-    assert result == {
+    result = build_changelog(changes)
+
+    # Latest change is shown in full, with a formatted date.
+    assert result['latest'] == {
+        'date': '9 Jun 2026',
         'added': ['New Song - Artist A', 'Another One - Artist B'],
         'removed': ['Old Song - Artist C'],
     }
 
-    # No changelog key -> None
-    assert extract_changelog({'generated_at': '2024-01-01T12:00:00Z'}) is None
+    # Earlier changes carry the same full shape (date + song lists) as the latest.
+    assert result['earlier'] == [
+        {
+            'date': '2 Jun 2026',
+            'added': ['Hey Jude - The Beatles'],
+            'removed': [],
+        },
+    ]
 
-    # Empty changelog lists -> None
-    assert extract_changelog({'changelog': {'added': [], 'removed': []}}) is None
+    # No changes -> None
+    assert build_changelog(None) is None
+    assert build_changelog({'edition': 'current', 'entries': []}) is None
+    # Entries with no additions or removals are ignored.
+    assert build_changelog({'entries': [{'added': [], 'removed': []}]}) is None
 
-    # None manifest -> None
-    assert extract_changelog(None) is None
+
+def test_build_changelog_history_limit():
+    """The earlier-changes list is capped at the history limit."""
+    entries = [
+        {
+            'generated_at': f'2026-06-{day:02d}T00:00:00+00:00',
+            'added': [f'Song {day}'],
+            'removed': [],
+            'added_count': 1,
+            'removed_count': 0,
+        }
+        for day in range(20, 0, -1)  # 20 entries, newest-first
+    ]
+    result = build_changelog({'entries': entries}, history_limit=10)
+    # 1 latest + 10 earlier shown out of 20 total.
+    assert len(result['earlier']) == 10
 
 
 def test_render_index_with_changelog(sample_supporter_stats):
@@ -437,18 +512,36 @@ def test_render_index_with_changelog(sample_supporter_stats):
         'preview_image': 'previews/current.png',
         'filename': 'current.pdf',
         'changelog': {
-            'added': ['Brand New Song - The Band'],
-            'removed': ['Retired Song - Old Act'],
+            'latest': {
+                'date': '9 Jun 2026',
+                'added': ['Brand New Song - The Band'],
+                'removed': ['Retired Song - Old Act'],
+            },
+            'earlier': [
+                {
+                    'date': '2 Jun 2026',
+                    'added': ['An Older Addition - Some Artist'],
+                    'removed': [],
+                },
+            ],
         },
     }]
 
     html = render_index(files, supporter_stats=sample_supporter_stats)
 
     assert "What's new" in html
+    # The top summary no longer shows the (x added, x removed) counts.
+    assert "What's new (" not in html
     assert 'Added' in html
     assert 'Removed' in html
     assert 'Brand New Song - The Band' in html
     assert 'Retired Song - Old Act' in html
+    assert '9 Jun 2026' in html
+    # Earlier changes are revealed via a button and list their songs in full.
+    assert 'changelog-more' in html
+    assert 'Earlier changes' in html
+    assert '2 Jun 2026' in html
+    assert 'An Older Addition - Some Artist' in html
 
 
 def test_render_index_without_changelog(sample_files, sample_supporter_stats):

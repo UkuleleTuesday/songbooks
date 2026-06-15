@@ -45,6 +45,23 @@
     </header>
     
     <main>
+      {% macro changelog_entry(entry) %}
+      <div class="changelog-entry">
+        {% if entry.date %}<div class="changelog-date">{{ entry.date }}</div>{% endif %}
+        {% if entry.added %}
+        <div class="changelog-group changelog-added">
+          <h4>Added</h4>
+          <ul>{% for song in entry.added %}<li>{{ song }}</li>{% endfor %}</ul>
+        </div>
+        {% endif %}
+        {% if entry.removed %}
+        <div class="changelog-group changelog-removed">
+          <h4>Removed</h4>
+          <ul>{% for song in entry.removed %}<li>{{ song }}</li>{% endfor %}</ul>
+        </div>
+        {% endif %}
+      </div>
+      {% endmacro %}
       <ul class="songbook-list">
       {% for file in files %}
         <li class="songbook-item">
@@ -68,20 +85,15 @@
               {% endif %}
             </div>
           </a>
-          {% if file.changelog and (file.changelog.added or file.changelog.removed) %}
+          {% if file.changelog %}
           <details class="songbook-changelog">
-            <summary>What's new ({{ file.changelog.added|length }} added, {{ file.changelog.removed|length }} removed)</summary>
+            <summary>What's new</summary>
             <div class="changelog-body">
-              {% if file.changelog.added %}
-              <div class="changelog-group changelog-added">
-                <h4>Added</h4>
-                <ul>{% for song in file.changelog.added %}<li>{{ song }}</li>{% endfor %}</ul>
-              </div>
-              {% endif %}
-              {% if file.changelog.removed %}
-              <div class="changelog-group changelog-removed">
-                <h4>Removed</h4>
-                <ul>{% for song in file.changelog.removed %}<li>{{ song }}</li>{% endfor %}</ul>
+              {{ changelog_entry(file.changelog.latest) }}
+              {% if file.changelog.earlier %}
+              <button type="button" class="changelog-more" hidden>Earlier changes…</button>
+              <div class="changelog-earlier">
+                {% for entry in file.changelog.earlier %}{{ changelog_entry(entry) }}{% endfor %}
               </div>
               {% endif %}
             </div>
@@ -167,6 +179,22 @@
             properties['songbook_subject'] = link.dataset.songbookSubject;
           }
           mixpanel.track('Songbook Download', properties);
+        });
+      });
+    });
+  </script>
+  <script>
+    // Progressive enhancement: without JS the earlier changelog entries are
+    // shown inline; with JS we tuck them behind an "Earlier changes…" button.
+    document.addEventListener('DOMContentLoaded', function() {
+      document.querySelectorAll('.changelog-more').forEach(function(btn) {
+        const earlier = btn.nextElementSibling;
+        if (!earlier) return;
+        earlier.hidden = true;
+        btn.hidden = false;
+        btn.addEventListener('click', function() {
+          earlier.hidden = false;
+          btn.hidden = true;
         });
       });
     });
