@@ -1,4 +1,5 @@
 import os
+import sys
 import io
 import shutil
 import json
@@ -11,6 +12,12 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from google.cloud import storage
 from jinja2 import Environment, FileSystemLoader
+
+# Stream stdout line-by-line so CI logs show progress live, instead of staying
+# silent until a block buffer fills or the process exits — which previously hid
+# where a slow/hung build was actually stuck.
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(line_buffering=True)
 
 # Configuration
 BUCKET_NAME = os.environ['GCS_BUCKET']
