@@ -5,7 +5,7 @@ import shutil
 import json
 import time
 import yaml
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import fitz  # PyMuPDF
 import requests
 from requests.adapters import HTTPAdapter
@@ -27,6 +27,14 @@ PREVIEW_DIR = os.path.join(OUTPUT_DIR, 'previews')
 TEMPLATE_DIR = 'templates'
 TEMPLATE_FILE = 'index.html.j2'
 EDITIONS_FILE = 'editions.yml'
+
+# Buy Me a Coffee data is cached between builds (persisted via actions/cache) so we
+# hit the rate-limited API at most once per TTL instead of on every 15-min build.
+# The two buckets are cached separately so a failure on one never stales the other.
+CACHE_DIR = '.bmc-cache'
+BMC_CACHE_TTL = timedelta(hours=24)
+DEFAULT_STATS = {'total_amount': 912, 'supporter_count': 61, 'currency': '€'}
+DEFAULT_SUBSCRIPTIONS = []
 # Number of older changelog entries to list under the latest change in the
 # "What's new" panel (the most recent change is always shown in full).
 CHANGELOG_HISTORY_LIMIT = 10
@@ -235,19 +243,16 @@ def _rate_limit_hint(response):
     return ""
 
 def get_buymeacoffee_stats():
-    """Fetch supporter statistics from Buy Me a Coffee API with pagination."""
-    # Fallback values in case API fails
-    fallback_stats = {
-        'total_amount': 912,
-        'supporter_count': 61,
-        'currency': '€'
-    }
+    """Fetch supporter statistics from the Buy Me a Coffee API with pagination.
 
+    Returns a {'total_amount', 'supporter_count', 'currency'} dict on success, or
+    None on any failure so the caller can choose between a cached or default value.
+    """
     # Check if API token is available
     api_token = os.environ.get('BUYMEACOFFEE_API_TOKEN')
     if not api_token:
-        print("  No Buy Me a Coffee API token found, using fallback values")
-        return fallback_stats
+        print("  No Buy Me a Coffee API token found", flush=True)
+        return None
 
     # Tracked out here so the error handlers below can report which page failed.
     page = 1
@@ -285,12 +290,12 @@ def get_buymeacoffee_stats():
                     allow_redirects=False
                 )
             except requests.Timeout:
-                print(f"  Buy Me a Coffee API timed out after 10s on page {page}, using fallback values", flush=True)
-                return fallback_stats
+                print(f"  Buy Me a Coffee API timed out after 10s on page {page}", flush=True)
+                return None
 
             if response.status_code != 200:
-                print(f"  Buy Me a Coffee API returned status {response.status_code} on page {page}, using fallback values.{_auth_hint(response)}{_rate_limit_hint(response)} Response body: {_response_error_snippet(response)}", flush=True)
-                return fallback_stats
+                print(f"  Buy Me a Coffee API returned status {response.status_code} on page {page}.{_auth_hint(response)}{_rate_limit_hint(response)} Response body: {_response_error_snippet(response)}", flush=True)
+                return None
 
             data = response.json()
 
@@ -338,19 +343,23 @@ def get_buymeacoffee_stats():
         }
 
     except requests.RequestException as e:
-        print(f"  Error fetching Buy Me a Coffee stats on page {page}: {e}, using fallback values", flush=True)
-        return fallback_stats
+        print(f"  Error fetching Buy Me a Coffee stats on page {page}: {e}", flush=True)
+        return None
     except Exception as e:
-        print(f"  Unexpected error with Buy Me a Coffee API on page {page}: {e}, using fallback values", flush=True)
-        return fallback_stats
+        print(f"  Unexpected error with Buy Me a Coffee API on page {page}: {e}", flush=True)
+        return None
 
 def get_buymeacoffee_subscriptions():
-    """Fetch active monthly subscriptions from Buy Me a Coffee API with pagination."""
+    """Fetch active monthly subscriptions from the Buy Me a Coffee API.
+
+    Returns a list of supporter names on success (possibly empty), or None on any
+    failure so the caller can fall back to a cached or default value.
+    """
     # Check if API token is available
     api_token = os.environ.get('BUYMEACOFFEE_API_TOKEN')
     if not api_token:
-        print("  No Buy Me a Coffee API token found, skipping monthly supporters")
-        return []
+        print("  No Buy Me a Coffee API token found", flush=True)
+        return None
 
     # Tracked out here so the error handlers below can report which page failed.
     page = 1
@@ -389,12 +398,12 @@ def get_buymeacoffee_subscriptions():
                     allow_redirects=False
                 )
             except requests.Timeout:
-                print(f"  Buy Me a Coffee subscriptions API timed out after 10s on page {page}, skipping monthly supporters", flush=True)
-                return []
+                print(f"  Buy Me a Coffee subscriptions API timed out after 10s on page {page}", flush=True)
+                return None
 
             if response.status_code != 200:
-                print(f"  Buy Me a Coffee subscriptions API returned status {response.status_code} on page {page}, skipping monthly supporters.{_auth_hint(response)}{_rate_limit_hint(response)} Response body: {_response_error_snippet(response)}", flush=True)
-                return []
+                print(f"  Buy Me a Coffee subscriptions API returned status {response.status_code} on page {page}.{_auth_hint(response)}{_rate_limit_hint(response)} Response body: {_response_error_snippet(response)}", flush=True)
+                return None
 
             data = response.json()
 
@@ -430,11 +439,60 @@ def get_buymeacoffee_subscriptions():
         return supporter_names
 
     except requests.RequestException as e:
-        print(f"  Error fetching Buy Me a Coffee subscriptions on page {page}: {e}, skipping monthly supporters", flush=True)
-        return []
+        print(f"  Error fetching Buy Me a Coffee subscriptions on page {page}: {e}", flush=True)
+        return None
     except Exception as e:
-        print(f"  Unexpected error with Buy Me a Coffee subscriptions API on page {page}: {e}, skipping monthly supporters", flush=True)
-        return []
+        print(f"  Unexpected error with Buy Me a Coffee subscriptions API on page {page}: {e}", flush=True)
+        return None
+
+def _cache_path(name):
+    return os.path.join(CACHE_DIR, f'{name}.json')
+
+def _read_cache(name):
+    """Return the cached {'fetched_at', 'data'} entry, or None if missing/unreadable."""
+    try:
+        with open(_cache_path(name)) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return None
+
+def _write_cache(name, data):
+    """Persist `data` under `name` with the current UTC timestamp."""
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    with open(_cache_path(name), 'w') as f:
+        json.dump({'fetched_at': datetime.now(timezone.utc).isoformat(), 'data': data}, f, indent=2)
+
+def _cache_age(entry):
+    """Age of a cache entry; treat a missing/unparseable timestamp as infinitely old."""
+    try:
+        fetched_at = datetime.fromisoformat(entry['fetched_at'])
+    except (KeyError, TypeError, ValueError):
+        return timedelta.max
+    return datetime.now(timezone.utc) - fetched_at
+
+def _fetch_with_cache(name, fetch_fn, default, label, ttl=BMC_CACHE_TTL):
+    """Return cached data when it's within `ttl`, otherwise fetch fresh.
+
+    Each bucket (stats, subscriptions) is cached independently. On a failed fetch
+    (fetch_fn returns None) we reuse the last cached value, falling back to
+    `default` only when there is no cache at all.
+    """
+    entry = _read_cache(name)
+    if entry is not None and _cache_age(entry) < ttl:
+        print(f"  Using cached {label} (fetched {entry['fetched_at']}) — skipping BMC call", flush=True)
+        return entry['data']
+
+    data = fetch_fn()
+    if data is not None:
+        _write_cache(name, data)
+        return data
+
+    if entry is not None:
+        print(f"  {label} fetch failed; reusing last cached value from {entry['fetched_at']}", flush=True)
+        return entry['data']
+
+    print(f"  {label} fetch failed and no cache available; using built-in default", flush=True)
+    return default
 
 def download_pdf_from_url(url):
     """Downloads a PDF from a URL and returns the bytes."""
@@ -503,13 +561,13 @@ if __name__ == '__main__':
 
     os.makedirs(PREVIEW_DIR, exist_ok=True)
 
-    # Fetch Buy Me a Coffee supporter statistics
+    # Buy Me a Coffee supporter stats — cached between builds (see _fetch_with_cache)
     print("Fetching Buy Me a Coffee supporter statistics...")
-    supporter_stats = get_buymeacoffee_stats()
+    supporter_stats = _fetch_with_cache('stats', get_buymeacoffee_stats, DEFAULT_STATS, 'supporter stats')
 
-    # Fetch Buy Me a Coffee monthly subscriptions
+    # Buy Me a Coffee monthly supporters — cached separately
     print("Fetching Buy Me a Coffee monthly supporters...")
-    monthly_supporters = get_buymeacoffee_subscriptions()
+    monthly_supporters = _fetch_with_cache('subscriptions', get_buymeacoffee_subscriptions, DEFAULT_SUBSCRIPTIONS, 'monthly supporters')
 
     latest_update_time = None
 

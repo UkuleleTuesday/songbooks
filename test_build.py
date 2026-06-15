@@ -127,10 +127,8 @@ def test_get_buymeacoffee_stats_api_error(requests_mock):
     try:
         result = get_buymeacoffee_stats()
         
-        # Should return fallback values
-        assert result['total_amount'] == 912
-        assert result['supporter_count'] == 61
-        assert result['currency'] == '€'
+        # Failure returns None; the caller falls back to cache/default
+        assert result is None
     finally:
         # Clean up environment variable
         if 'BUYMEACOFFEE_API_TOKEN' in os.environ:
@@ -144,10 +142,8 @@ def test_get_buymeacoffee_stats_no_token():
     
     result = get_buymeacoffee_stats()
     
-    # Should return fallback values
-    assert result['total_amount'] == 912
-    assert result['supporter_count'] == 61
-    assert result['currency'] == '€'
+    # Failure returns None; the caller falls back to cache/default
+    assert result is None
 
 def test_get_buymeacoffee_stats_invalid_data(requests_mock):
     """Test Buy Me a Coffee API with invalid data types."""
@@ -328,8 +324,8 @@ def test_get_buymeacoffee_subscriptions_no_token():
     
     result = get_buymeacoffee_subscriptions()
     
-    # Should return empty list
-    assert result == []
+    # Failure returns None; the caller falls back to cache/default
+    assert result is None
 
 def test_get_buymeacoffee_subscriptions_api_error(requests_mock):
     """Test subscriptions API error handling."""
@@ -346,8 +342,8 @@ def test_get_buymeacoffee_subscriptions_api_error(requests_mock):
     try:
         result = get_buymeacoffee_subscriptions()
         
-        # Should return empty list
-        assert result == []
+        # Failure returns None; the caller falls back to cache/default
+        assert result is None
     finally:
         # Clean up environment variable
         if 'BUYMEACOFFEE_API_TOKEN' in os.environ:
@@ -665,9 +661,8 @@ def test_get_buymeacoffee_stats_fallback_on_error(requests_mock, capsys):
     try:
         result = get_buymeacoffee_stats()
 
-        # Should return fallback values
-        assert result['total_amount'] == 912
-        assert result['supporter_count'] == 61
+        # Failure returns None; the caller falls back to cache/default
+        assert result is None
         # The response body must be surfaced in logs for diagnosis
         captured = capsys.readouterr()
         assert 'status 502' in captured.out
@@ -689,8 +684,8 @@ def test_get_buymeacoffee_stats_401_flags_token(requests_mock, capsys):
     try:
         result = get_buymeacoffee_stats()
 
-        # Falls back, and the log points at the token rather than a misleading gateway error
-        assert result['total_amount'] == 912
+        # Returns None; the log points at the token rather than a misleading gateway error
+        assert result is None
         captured = capsys.readouterr()
         assert 'status 401' in captured.out
         assert 'Unauthenticated' in captured.out
@@ -710,7 +705,7 @@ def test_get_buymeacoffee_stats_429_bails_with_retry_after(requests_mock, capsys
     try:
         result = get_buymeacoffee_stats()
 
-        assert result['total_amount'] == 912  # fallback, no waiting
+        assert result is None  # bailed, no waiting
         out = capsys.readouterr().out
         assert 'status 429' in out
         assert 'Retry-After=3600' in out
@@ -731,7 +726,7 @@ def test_get_buymeacoffee_stats_timeout_logs_page(requests_mock, capsys):
     try:
         result = get_buymeacoffee_stats()
 
-        assert result['total_amount'] == 912  # fallback
+        assert result is None  # failed fetch
         captured = capsys.readouterr()
         assert 'timed out after 10s on page 1' in captured.out
     finally:
@@ -800,8 +795,8 @@ def test_get_buymeacoffee_subscriptions_empty_on_error(requests_mock, capsys):
     try:
         result = get_buymeacoffee_subscriptions()
 
-        # Should return empty list
-        assert result == []
+        # Failure returns None; the caller falls back to cache/default
+        assert result is None
         # The response body must be surfaced in logs for diagnosis
         captured = capsys.readouterr()
         assert 'status 502' in captured.out
@@ -828,6 +823,55 @@ def test_logging_retry_announces_retry_after(capsys, monkeypatch):
     assert 'status 429' in out
     assert 'Retry-After' in out
     assert 'sleeping 5s' in out
+
+
+def test_fetch_with_cache_uses_fresh_cache(tmp_path, monkeypatch):
+    """A fresh cache is used and the fetcher is not called."""
+    import build
+    monkeypatch.setattr(build, 'CACHE_DIR', str(tmp_path))
+    build._write_cache('stats', {'total_amount': 500, 'supporter_count': 25, 'currency': '€'})
+
+    called = []
+    def fetch():
+        called.append(True)
+        return {'total_amount': 999, 'supporter_count': 99, 'currency': '€'}
+
+    result = build._fetch_with_cache('stats', fetch, build.DEFAULT_STATS, 'supporter stats')
+    assert result == {'total_amount': 500, 'supporter_count': 25, 'currency': '€'}
+    assert called == []  # fetcher skipped
+
+
+def test_fetch_with_cache_refetches_when_stale(tmp_path, monkeypatch):
+    """A missing cache triggers a fresh fetch, which is then persisted."""
+    import build
+    monkeypatch.setattr(build, 'CACHE_DIR', str(tmp_path))
+
+    fresh = {'total_amount': 999, 'supporter_count': 99, 'currency': '€'}
+    result = build._fetch_with_cache('stats', lambda: fresh, build.DEFAULT_STATS, 'supporter stats')
+
+    assert result == fresh
+    assert build._read_cache('stats')['data'] == fresh
+
+
+def test_fetch_with_cache_reuses_stale_on_failure(tmp_path, monkeypatch):
+    """When the fetch fails (None) but a cache exists, reuse the cached value."""
+    import build
+    monkeypatch.setattr(build, 'CACHE_DIR', str(tmp_path))
+    build._write_cache('subscriptions', ['Alice', 'Bob'])
+    # Force the entry to look stale so a fetch is attempted.
+    monkeypatch.setattr(build, '_cache_age', lambda entry: build.timedelta(days=999))
+
+    result = build._fetch_with_cache('subscriptions', lambda: None, build.DEFAULT_SUBSCRIPTIONS, 'monthly supporters')
+    assert result == ['Alice', 'Bob']
+
+
+def test_fetch_with_cache_falls_back_to_default(tmp_path, monkeypatch):
+    """No cache plus a failed fetch falls back to the built-in default."""
+    import build
+    monkeypatch.setattr(build, 'CACHE_DIR', str(tmp_path))
+
+    result = build._fetch_with_cache('stats', lambda: None, build.DEFAULT_STATS, 'supporter stats')
+    assert result == build.DEFAULT_STATS
 
 
 if __name__ == '__main__':

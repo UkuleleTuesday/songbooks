@@ -54,6 +54,18 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
+      # Persist Buy Me a Coffee data between runs so build.py hits the rate-limited
+      # API at most once per TTL (see _fetch_with_cache in build.py). The run_id key
+      # is always unique, so restore falls back to the most recent bmc-cache- entry
+      # and the post-job step always saves the updated cache.
+      - name: Cache Buy Me a Coffee data
+        uses: actions/cache@v4
+        with:
+          path: .bmc-cache
+          key: bmc-cache-${{ github.run_id }}
+          restore-keys: |
+            bmc-cache-
+
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
