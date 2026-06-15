@@ -470,9 +470,13 @@ def test_build_changelog():
         'removed': ['Old Song - Artist C'],
     }
 
-    # Earlier changes are summarised (date + counts only).
+    # Earlier changes carry the same full shape (date + song lists) as the latest.
     assert result['earlier'] == [
-        {'date': '2 Jun 2026', 'added_count': 1, 'removed_count': 0},
+        {
+            'date': '2 Jun 2026',
+            'added': ['Hey Jude - The Beatles'],
+            'removed': [],
+        },
     ]
 
     # No changes -> None
@@ -480,20 +484,6 @@ def test_build_changelog():
     assert build_changelog({'edition': 'current', 'entries': []}) is None
     # Entries with no additions or removals are ignored.
     assert build_changelog({'entries': [{'added': [], 'removed': []}]}) is None
-
-
-def test_build_changelog_counts_fallback():
-    """Counts are derived from the song lists when not provided explicitly."""
-    changes = {
-        'entries': [
-            {'generated_at': '2026-06-09T00:00:00+00:00', 'added': ['A - B'], 'removed': []},
-            {'generated_at': '2026-06-02T00:00:00+00:00', 'added': ['C - D', 'E - F'], 'removed': ['G - H']},
-        ],
-    }
-    result = build_changelog(changes)
-    assert result['earlier'] == [
-        {'date': '2 Jun 2026', 'added_count': 2, 'removed_count': 1},
-    ]
 
 
 def test_build_changelog_history_limit():
@@ -528,7 +518,11 @@ def test_render_index_with_changelog(sample_supporter_stats):
                 'removed': ['Retired Song - Old Act'],
             },
             'earlier': [
-                {'date': '2 Jun 2026', 'added_count': 3, 'removed_count': 1},
+                {
+                    'date': '2 Jun 2026',
+                    'added': ['An Older Addition - Some Artist'],
+                    'removed': [],
+                },
             ],
         },
     }]
@@ -536,15 +530,18 @@ def test_render_index_with_changelog(sample_supporter_stats):
     html = render_index(files, supporter_stats=sample_supporter_stats)
 
     assert "What's new" in html
+    # The top summary no longer shows the (x added, x removed) counts.
+    assert "What's new (" not in html
     assert 'Added' in html
     assert 'Removed' in html
     assert 'Brand New Song - The Band' in html
     assert 'Retired Song - Old Act' in html
-    # The latest change is dated, and earlier changes are summarised.
     assert '9 Jun 2026' in html
+    # Earlier changes are revealed via a button and list their songs in full.
+    assert 'changelog-more' in html
     assert 'Earlier changes' in html
     assert '2 Jun 2026' in html
-    assert '3 added, 1 removed' in html
+    assert 'An Older Addition - Some Artist' in html
 
 
 def test_render_index_without_changelog(sample_files, sample_supporter_stats):

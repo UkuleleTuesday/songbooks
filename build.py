@@ -130,11 +130,20 @@ def format_changelog_date(generated_at):
         return ''
     return f"{dt.day} {dt:%b %Y}"
 
+def _changelog_entry(entry):
+    """Shapes one changes.json entry for display: a date plus the song lists
+    added and removed."""
+    return {
+        'date': format_changelog_date(entry.get('generated_at')),
+        'added': entry.get('added', []),
+        'removed': entry.get('removed', []),
+    }
+
 def build_changelog(changes, history_limit=CHANGELOG_HISTORY_LIMIT):
     """Builds the "What's new" panel data from an edition's changes.json.
 
-    Surfaces the most recent change in full (date plus the songs added/removed)
-    followed by a short, dated history of earlier changes (counts only). The
+    Surfaces the most recent change followed by a short history of earlier
+    changes, each shaped identically (a date plus the songs added/removed). The
     'entries' in `changes` are expected newest-first, as published by the
     generator.
 
@@ -142,7 +151,7 @@ def build_changelog(changes, history_limit=CHANGELOG_HISTORY_LIMIT):
 
         {
             'latest': {'date': '9 Jun 2026', 'added': [...], 'removed': [...]},
-            'earlier': [{'date': '2 Jun 2026', 'added_count': 3, 'removed_count': 3}, ...],
+            'earlier': [{'date': '2 Jun 2026', 'added': [...], 'removed': [...]}, ...],
         }
 
     or None when there are no entries with any additions or removals.
@@ -157,23 +166,10 @@ def build_changelog(changes, history_limit=CHANGELOG_HISTORY_LIMIT):
     if not entries:
         return None
 
-    latest = entries[0]
-    latest_data = {
-        'date': format_changelog_date(latest.get('generated_at')),
-        'added': latest.get('added', []),
-        'removed': latest.get('removed', []),
+    return {
+        'latest': _changelog_entry(entries[0]),
+        'earlier': [_changelog_entry(entry) for entry in entries[1:1 + history_limit]],
     }
-
-    earlier = [
-        {
-            'date': format_changelog_date(entry.get('generated_at')),
-            'added_count': entry.get('added_count', len(entry.get('added', []))),
-            'removed_count': entry.get('removed_count', len(entry.get('removed', []))),
-        }
-        for entry in entries[1:1 + history_limit]
-    ]
-
-    return {'latest': latest_data, 'earlier': earlier}
 
 def get_buymeacoffee_stats():
     """Fetch supporter statistics from Buy Me a Coffee API with pagination."""
