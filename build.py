@@ -31,6 +31,27 @@ EDITIONS_FILE = 'editions.yml'
 # "What's new" panel (the most recent change is always shown in full).
 CHANGELOG_HISTORY_LIMIT = 10
 
+class _LoggingRetry(Retry):
+    """A urllib3 Retry that announces each wait it takes.
+
+    Retries — especially Retry-After sleeps on 429s — are otherwise silent, so a
+    rate-limited request looks like a multi-minute hang with no explanation.
+    This logs which status triggered the retry and how long we're about to wait.
+    """
+
+    def sleep(self, response=None):
+        retry_after = None
+        if response is not None and self.respect_retry_after_header:
+            retry_after = self.get_retry_after(response)
+        if retry_after:
+            print(f"    BMC retry: status {response.status}, honoring Retry-After — sleeping {retry_after:.0f}s", flush=True)
+        else:
+            backoff = self.get_backoff_time()
+            if backoff > 0:
+                where = f"status {response.status}" if response is not None else "connection error"
+                print(f"    BMC retry: {where} — backing off {backoff:.1f}s", flush=True)
+        super().sleep(response)
+
 def create_session_with_retry(max_retries=5, backoff_factor=1):
     """
     Creates a requests Session with retry configuration for 429 errors.
@@ -42,7 +63,7 @@ def create_session_with_retry(max_retries=5, backoff_factor=1):
     Returns:
         requests.Session configured with retry adapter
     """
-    retry = Retry(
+    retry = _LoggingRetry(
         total=max_retries,
         backoff_factor=backoff_factor,       # exponential backoff: 1s, 2s, 4s…
         status_forcelist=[429],              # retry on rate limit

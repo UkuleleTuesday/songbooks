@@ -791,5 +791,24 @@ def test_get_buymeacoffee_subscriptions_empty_on_error(requests_mock, capsys):
             del os.environ['BUYMEACOFFEE_API_TOKEN']
 
 
+def test_logging_retry_announces_retry_after(capsys, monkeypatch):
+    """The retry logs each wait, so a rate-limited request isn't a silent gap."""
+    import time
+    from unittest.mock import MagicMock
+    from build import _LoggingRetry
+
+    # Don't actually sleep through the Retry-After during the test.
+    monkeypatch.setattr(time, 'sleep', lambda *a, **k: None)
+
+    retry = _LoggingRetry(total=5, status_forcelist=[429], respect_retry_after_header=True)
+    response = MagicMock(status=429, headers={'Retry-After': '5'})
+    retry.sleep(response)
+
+    out = capsys.readouterr().out
+    assert 'status 429' in out
+    assert 'Retry-After' in out
+    assert 'sleeping 5s' in out
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
