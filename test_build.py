@@ -10,7 +10,7 @@ import yaml
 from unittest.mock import MagicMock
 
 # Import functions from build.py for testing
-from build import get_buymeacoffee_stats, get_buymeacoffee_subscriptions, render_index, get_editions_config, get_latest_edition_info, get_edition_manifest, create_session_with_retry, get_edition_changes, build_changelog, format_changelog_date
+from build import get_buymeacoffee_stats, get_buymeacoffee_subscriptions, render_index, get_editions_config, get_latest_edition_info, get_edition_manifest, create_session_with_retry, get_edition_changes, build_changelog, format_changelog_date, song_sheet_url
 
 
 @pytest.fixture
@@ -439,6 +439,22 @@ def test_format_changelog_date():
     assert format_changelog_date('not-a-date') == ''
 
 
+def test_song_sheet_url():
+    """Test deriving a song's chord-sheet URL from its "Title - Artist" string."""
+    sheets = 'https://ukuleletuesday.github.io/songs/sheets'
+    # Apostrophes are dropped (not hyphenated) and other punctuation collapses
+    # to single hyphens, matching the songs site's slug convention.
+    assert song_sheet_url("Can't Get You Out of My Head - Kylie Minogue") == \
+        f'{sheets}/cant-get-you-out-of-my-head-kylie-minogue/'
+    # Accents are stripped to their ASCII base.
+    assert song_sheet_url('Crème Brûlée - Béyoncé') == f'{sheets}/creme-brulee-beyonce/'
+    # Curly apostrophes are dropped just like straight ones.
+    assert song_sheet_url('Don’t Stop - Fleetwood Mac') == f'{sheets}/dont-stop-fleetwood-mac/'
+    # A name with no slug-able characters yields None so callers skip linking.
+    assert song_sheet_url('!!!') is None
+    assert song_sheet_url('') is None
+
+
 def test_build_changelog():
     """Test building the 'What's new' panel data from changes.json."""
     changes = {
@@ -462,18 +478,28 @@ def test_build_changelog():
     }
     result = build_changelog(changes)
 
-    # Latest change is shown in full, with a formatted date.
+    sheets = 'https://ukuleletuesday.github.io/songs/sheets'
+
+    # Latest change is shown in full, with a formatted date. Each song carries
+    # its display name and a link to its chord sheet.
     assert result['latest'] == {
         'date': '9 Jun 2026',
-        'added': ['New Song - Artist A', 'Another One - Artist B'],
-        'removed': ['Old Song - Artist C'],
+        'added': [
+            {'name': 'New Song - Artist A', 'url': f'{sheets}/new-song-artist-a/'},
+            {'name': 'Another One - Artist B', 'url': f'{sheets}/another-one-artist-b/'},
+        ],
+        'removed': [
+            {'name': 'Old Song - Artist C', 'url': f'{sheets}/old-song-artist-c/'},
+        ],
     }
 
     # Earlier changes carry the same full shape (date + song lists) as the latest.
     assert result['earlier'] == [
         {
             'date': '2 Jun 2026',
-            'added': ['Hey Jude - The Beatles'],
+            'added': [
+                {'name': 'Hey Jude - The Beatles', 'url': f'{sheets}/hey-jude-the-beatles/'},
+            ],
             'removed': [],
         },
     ]
@@ -513,13 +539,16 @@ def test_render_index_with_changelog(sample_supporter_stats):
         'changelog': {
             'latest': {
                 'date': '9 Jun 2026',
-                'added': ['Brand New Song - The Band'],
-                'removed': ['Retired Song - Old Act'],
+                'added': [{'name': 'Brand New Song - The Band',
+                           'url': 'https://ukuleletuesday.github.io/songs/sheets/brand-new-song-the-band/'}],
+                'removed': [{'name': 'Retired Song - Old Act',
+                             'url': 'https://ukuleletuesday.github.io/songs/sheets/retired-song-old-act/'}],
             },
             'earlier': [
                 {
                     'date': '2 Jun 2026',
-                    'added': ['An Older Addition - Some Artist'],
+                    'added': [{'name': 'An Older Addition - Some Artist',
+                               'url': 'https://ukuleletuesday.github.io/songs/sheets/an-older-addition-some-artist/'}],
                     'removed': [],
                 },
             ],
@@ -535,6 +564,8 @@ def test_render_index_with_changelog(sample_supporter_stats):
     assert 'Removed' in html
     assert 'Brand New Song - The Band' in html
     assert 'Retired Song - Old Act' in html
+    # Songs link to their chord sheets on the songs site.
+    assert 'https://ukuleletuesday.github.io/songs/sheets/brand-new-song-the-band/' in html
     assert '9 Jun 2026' in html
     # Earlier changes are revealed via a button and list their songs in full.
     assert 'changelog-more' in html

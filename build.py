@@ -1,9 +1,11 @@
 import os
 import sys
 import io
+import re
 import shutil
 import json
 import time
+import unicodedata
 import yaml
 from datetime import datetime, timedelta, timezone
 import fitz  # PyMuPDF
@@ -22,6 +24,9 @@ if hasattr(sys.stdout, 'reconfigure'):
 # Configuration
 BUCKET_NAME = os.environ['GCS_BUCKET']
 BASE_URL = 'https://songbooks.ukuleletuesday.ie'
+# Base URL for individual song chord sheets on the songs site. Changelog songs
+# are linked here so readers can jump straight to a sheet that was added.
+SONGS_SHEET_BASE_URL = 'https://ukuleletuesday.github.io/songs/sheets'
 OUTPUT_DIR = 'public'
 PREVIEW_DIR = os.path.join(OUTPUT_DIR, 'previews')
 TEMPLATE_DIR = 'templates'
@@ -171,13 +176,44 @@ def format_changelog_date(generated_at):
         return ''
     return f"{dt.day} {dt:%b %Y}"
 
+def song_sheet_url(name):
+    """Builds the public chord-sheet URL for a changelog song entry.
+
+    Songs appear in changes.json as "Title - Artist" strings; the songs site
+    publishes each at /songs/sheets/<slug>/, where the slug is that string
+    lowercased with accents stripped, apostrophes removed, and every run of
+    other non-alphanumeric characters collapsed to a single hyphen — e.g.
+    "Can't Get You Out of My Head - Kylie Minogue" becomes
+    "cant-get-you-out-of-my-head-kylie-minogue".
+
+    Returns None when the name yields an empty slug, so callers can fall back
+    to plain text rather than linking to a broken URL.
+    """
+    # Strip accents (é -> e) and drop any remaining non-ASCII characters.
+    ascii_name = (
+        unicodedata.normalize('NFKD', name)
+        .encode('ascii', 'ignore')
+        .decode('ascii')
+    )
+    # Remove apostrophes outright so "can't" -> "cant", not "can-t".
+    ascii_name = ascii_name.replace("'", '')
+    slug = re.sub(r'[^a-z0-9]+', '-', ascii_name.lower()).strip('-')
+    if not slug:
+        return None
+    return f"{SONGS_SHEET_BASE_URL}/{slug}/"
+
+def _changelog_song(name):
+    """Shapes one changelog song into a display name and its sheet URL (which
+    may be None when no valid slug can be derived)."""
+    return {'name': name, 'url': song_sheet_url(name)}
+
 def _changelog_entry(entry):
     """Shapes one changes.json entry for display: a date plus the song lists
-    added and removed."""
+    added and removed, each song carrying its name and chord-sheet URL."""
     return {
         'date': format_changelog_date(entry.get('generated_at')),
-        'added': entry.get('added', []),
-        'removed': entry.get('removed', []),
+        'added': [_changelog_song(s) for s in entry.get('added', [])],
+        'removed': [_changelog_song(s) for s in entry.get('removed', [])],
     }
 
 def build_changelog(changes, history_limit=CHANGELOG_HISTORY_LIMIT):
