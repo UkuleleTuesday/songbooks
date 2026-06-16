@@ -49,7 +49,7 @@
       grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
       gap: 1.5em;
     }
-    .songbook-item a {
+    .songbook-item > a {
       display: flex;
       flex-direction: column;
       height: 100%;
@@ -61,7 +61,7 @@
       border: 1px solid #eee;
       transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
     }
-    .songbook-item a:hover {
+    .songbook-item > a:hover {
       transform: translateY(-5px);
       box-shadow: 0 8px 20px rgba(0,0,0,0.08);
     }
