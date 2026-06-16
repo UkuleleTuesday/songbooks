@@ -166,12 +166,43 @@
       padding: 0;
     }
     .songbook-changelog li {
-      padding: 0.15em 0;
+      padding: 0.15em 0 0.15em 1.3em;
       color: #555;
-      border-bottom: 1px solid #f3f3f3;
     }
-    .songbook-changelog li:last-child {
-      border-bottom: none;
+    .songbook-changelog .changelog-group li::before {
+      display: inline-block;
+      width: 1.3em;
+      margin-left: -1.3em;
+      font-weight: bold;
+      text-align: left;
+    }
+    .songbook-changelog .changelog-added li::before {
+      content: "＋";
+      color: var(--primary-color);
+    }
+    .songbook-changelog .changelog-removed li::before {
+      content: "－";
+      color: var(--heart-color);
+    }
+    .songbook-changelog a {
+      color: var(--text-color);
+      text-decoration: none;
+    }
+    .songbook-changelog a::after {
+      content: "\2197\FE0E";
+      margin-left: 0.2em;
+      font-size: 0.85em;
+      color: #999;
+    }
+    .songbook-changelog a:hover,
+    .songbook-changelog a:focus-visible {
+      color: var(--primary-color);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+    .songbook-changelog a:hover::after,
+    .songbook-changelog a:focus-visible::after {
+      color: var(--primary-color);
     }
     .songbook-changelog .changelog-date {
       margin-top: 0.4em;
