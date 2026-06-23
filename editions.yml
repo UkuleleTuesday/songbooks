@@ -13,7 +13,7 @@
 #     hidden: true         # accessible at /wip/ but not shown on site listing
 editions:
   - name: travel-songbook
-    hidden: false
+    hidden: true
   - name: womens-2026
     hidden: true
   - name: wexford-2026
