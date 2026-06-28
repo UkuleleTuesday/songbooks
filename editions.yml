@@ -20,6 +20,8 @@ editions:
     hidden: true
   - name: april-fools-2026
     hidden: true
+  - name: pride-2026
+    hidden: false
   - name: current
     hidden: false
   - name: monopolele-2026
