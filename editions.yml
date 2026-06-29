@@ -23,7 +23,7 @@ editions:
   - name: pride-2026
     hidden: false
   - name: current
-    hidden: false
+    hidden: true
   - name: monopolele-2026
     hidden: true
   - name: complete
