@@ -25,9 +25,10 @@ editions:
   - name: pride-2026
     hidden: true
   - name: current
-    hidden: false
+    hidden: true
   - name: monopolele-2026
     hidden: true
   - name: complete
+    hidden: true
   - name: ukulele-hooley-2025
     hidden: true
