@@ -12,6 +12,8 @@
 #   - name: wip
 #     hidden: true         # accessible at /wip/ but not shown on site listing
 editions:
+  - name: ukulele-hooley-2026
+    hidden: false
   - name: travel-songbook
     hidden: true
   - name: womens-2026
