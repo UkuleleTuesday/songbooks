@@ -4,8 +4,9 @@
 # (generator/config/songbooks/<edition>.yaml) — that is the normal place to
 # publish, feature or retire an edition.
 #
-# Use this file ONLY for emergencies: pulling a book off the site (or forcing
-# one on) without waiting for a songbook-generator publish.
+# Use this file only for emergencies (pulling a book off the site, or forcing
+# one on, without waiting for a songbook-generator publish) and for editions
+# that have no generator config at all.
 # Precedence: this file > latest.json > defaults (a latest.json that predates
 # the visibility field is treated as unlisted).
 #
@@ -15,4 +16,9 @@
 #       visibility: unlisted   # 'public' or 'unlisted'
 #       pinned: true           # optional
 #
-overrides: {}
+overrides:
+  # april-fools-2026 is not managed by the generator (no edition config, and
+  # regenerating it would overwrite the joke PDF), so its stale latest.json
+  # defaults to unlisted; list it explicitly here.
+  april-fools-2026:
+    visibility: public
