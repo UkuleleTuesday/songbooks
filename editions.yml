@@ -15,20 +15,4 @@
 #       visibility: unlisted   # 'public' or 'unlisted'
 #       pinned: true           # optional
 #
-# TEMPORARY: the entries below mirror the generator-side publish metadata
-# reconciliation (https://github.com/UkuleleTuesday/songbook-generator/pull/455)
-# so this site behaves correctly whichever lands first. Delete them once that
-# PR is merged and its sync workflow has updated the bucket's latest.json files.
-overrides:
-  monopolele-2026:
-    visibility: unlisted
-  travel-songbook:
-    visibility: unlisted
-  wexford-2026:
-    visibility: unlisted
-  pride-candidates:
-    visibility: unlisted
-  current:
-    pinned: true
-  complete:
-    pinned: true
+overrides: {}
