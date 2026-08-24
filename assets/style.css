@@ -142,6 +142,41 @@
     .songbook-changelog summary:hover {
       color: #0b6b63;
     }
+    .card-badge {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background-color: var(--accent-color);
+      color: #254b48;
+      font-size: 0.75em;
+      font-weight: bold;
+      padding: 3px 10px;
+      border-radius: 12px;
+      pointer-events: none;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .songbook-item .updated-line {
+      font-size: 0.8em;
+      color: #666;
+      margin-top: 0.25em;
+    }
+    .all-songbooks {
+      margin-top: 2.5em;
+    }
+    .all-songbooks > summary {
+      cursor: pointer;
+      text-align: center;
+      font-weight: bold;
+      font-size: 1.1em;
+      color: var(--primary-color);
+      list-style-position: inside;
+    }
+    .all-songbooks > summary:hover {
+      color: #0b6b63;
+    }
+    .all-songbooks > .songbook-list {
+      margin-top: 1.5em;
+    }
     .songbook-changelog .changelog-body {
       padding: 0 1em 0.8em;
       max-height: 20em;
