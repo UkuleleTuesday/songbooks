@@ -10,7 +10,28 @@ import yaml
 from unittest.mock import MagicMock
 
 # Import functions from build.py for testing
-from build import get_buymeacoffee_stats, get_buymeacoffee_subscriptions, render_index, get_editions_config, get_latest_edition_info, get_edition_manifest, create_session_with_retry, get_edition_changes, build_changelog, format_changelog_date, song_sheet_url
+from datetime import datetime, timedelta, timezone
+
+from build import (
+    get_buymeacoffee_stats,
+    get_buymeacoffee_subscriptions,
+    render_index,
+    get_overrides,
+    get_latest_edition_info,
+    list_edition_names,
+    resolve_publish_meta,
+    discover_editions,
+    content_updated_at,
+    sort_editions,
+    partition_editions,
+    parse_timestamp,
+    write_redirects,
+    create_session_with_retry,
+    get_edition_changes,
+    build_changelog,
+    format_changelog_date,
+    song_sheet_url,
+)
 
 
 @pytest.fixture
@@ -197,28 +218,249 @@ def test_render_index(sample_files, sample_supporter_stats):
     assert 'mailto:contact@ukuleletuesday.ie' not in html
     assert 'https://www.ukuleletuesday.ie/contact-us/' in html
 
-def test_get_editions_config(monkeypatch):
-    """Test reading the editions YAML config."""
-    mock_yaml_content = {
-        'editions': [
-            {'name': 'current', 'show_changelog': True},
-            {'name': 'complete'},
-            {'name': 'wip', 'hidden': True},
-            {'name': 'archive', 'show_changelog': False},
-        ]
-    }
-    # Use monkeypatch to mock open() and yaml.safe_load()
-    monkeypatch.setattr('builtins.open', lambda *args, **kwargs: MagicMock())
-    monkeypatch.setattr('build.yaml.safe_load', lambda *args: mock_yaml_content)
+    # No more_files -> no "Show all songbooks" section
+    assert 'all-songbooks' not in html
 
-    editions = get_editions_config()
-    # show_changelog defaults to True; it can be explicitly suppressed per edition.
-    assert editions == [
-        {'name': 'current', 'hidden': False, 'show_changelog': True},
-        {'name': 'complete', 'hidden': False, 'show_changelog': True},
-        {'name': 'wip', 'hidden': True, 'show_changelog': True},
-        {'name': 'archive', 'hidden': False, 'show_changelog': False},
+
+def test_render_index_sections(sample_files, sample_supporter_stats):
+    """Featured books fill the main grid; more_files go under Show all."""
+    more_files = [
+        {
+            'title': 'Archived Songbook',
+            'subject': 'Old Favourites',
+            'url': 'https://example.com/archive.pdf',
+            'preview_image': 'previews/archive.png'
+        },
+        {
+            'title': 'Another Old Book',
+            'url': 'https://example.com/older.pdf',
+            'preview_image': 'previews/older.png'
+        },
     ]
+    html = render_index(
+        sample_files,
+        more_files=more_files,
+        supporter_stats=sample_supporter_stats
+    )
+    assert 'Test Songbook' in html
+    assert 'Archived Songbook' in html
+    assert '<details class="all-songbooks">' in html
+    assert 'Show all songbooks (2 more)' in html
+    # The archived books render after the expander summary
+    assert html.index('Show all songbooks') < html.index('Archived Songbook')
+
+
+def test_render_index_updated_line_and_badge(sample_supporter_stats):
+    """Per-card updated date renders, and the badge only when recent."""
+    files = [
+        {
+            'title': 'Fresh Book',
+            'url': 'https://example.com/fresh.pdf',
+            'preview_image': 'previews/fresh.png',
+            'updated_at': '2026-08-22T12:00:00+00:00',
+            'updated_display': '22 Aug 2026',
+            'recently_updated': True,
+        },
+        {
+            'title': 'Settled Book',
+            'url': 'https://example.com/settled.pdf',
+            'preview_image': 'previews/settled.png',
+            'updated_at': '2026-06-09T12:00:00+00:00',
+            'updated_display': '9 Jun 2026',
+            'recently_updated': False,
+        },
+    ]
+    html = render_index(files, supporter_stats=sample_supporter_stats)
+    assert '<time datetime="2026-08-22T12:00:00+00:00">22 Aug 2026</time>' in html
+    assert '<time datetime="2026-06-09T12:00:00+00:00">9 Jun 2026</time>' in html
+    # Exactly one badge: the recently updated book's
+    assert html.count('<span class="card-badge">Updated</span>') == 1
+
+def test_get_overrides(tmp_path):
+    """Test reading the optional editions.yml overrides file."""
+    path = tmp_path / 'editions.yml'
+
+    # Missing file -> no overrides
+    assert get_overrides(str(path)) == {}
+
+    # Empty overrides map -> no overrides
+    path.write_text('overrides: {}\n')
+    assert get_overrides(str(path)) == {}
+
+    # Empty file -> no overrides
+    path.write_text('')
+    assert get_overrides(str(path)) == {}
+
+    # Populated file: valid entries parsed, invalid ones dropped
+    path.write_text(
+        'overrides:\n'
+        '  pulled-book:\n'
+        '    visibility: unlisted\n'
+        '  promoted-book:\n'
+        '    visibility: public\n'
+        '    pinned: true\n'
+        '  bad-visibility:\n'
+        '    visibility: secret\n'
+        '  not-a-dict: unlisted\n'
+    )
+    assert get_overrides(str(path)) == {
+        'pulled-book': {'visibility': 'unlisted'},
+        'promoted-book': {'visibility': 'public', 'pinned': True},
+    }
+
+
+def test_list_edition_names():
+    """Top-level bucket prefixes become edition names, sorted, slash stripped."""
+    mock_bucket = MagicMock()
+    page1 = MagicMock()
+    page1.prefixes = {'current/', 'complete/'}
+    page2 = MagicMock()
+    page2.prefixes = {'ukulele-hooley-2026/'}
+    mock_bucket.client.list_blobs.return_value.pages = iter([page1, page2])
+
+    assert list_edition_names(mock_bucket) == ['complete', 'current', 'ukulele-hooley-2026']
+    mock_bucket.client.list_blobs.assert_called_once_with(mock_bucket, prefix='', delimiter='/')
+
+
+def test_resolve_publish_meta():
+    """Precedence: editions.yml override > latest.json > defaults."""
+    # latest.json values are used as-is
+    meta = resolve_publish_meta({'visibility': 'public', 'pinned': True})
+    assert meta == {'visibility': 'public', 'pinned': True}
+
+    # A latest.json without publish metadata (predates the feature) is unlisted
+    assert resolve_publish_meta({'pdf_filename': 'x.pdf'}) == {'visibility': 'unlisted', 'pinned': False}
+    assert resolve_publish_meta(None) == {'visibility': 'unlisted', 'pinned': False}
+
+    # An unknown visibility value is also treated as unlisted
+    assert resolve_publish_meta({'visibility': 'secret'})['visibility'] == 'unlisted'
+
+    # Overrides win over latest.json, for either field independently
+    meta = resolve_publish_meta(
+        {'visibility': 'public', 'pinned': False},
+        {'visibility': 'unlisted'},
+    )
+    assert meta == {'visibility': 'unlisted', 'pinned': False}
+    meta = resolve_publish_meta(
+        {'visibility': 'unlisted', 'pinned': False},
+        {'visibility': 'public', 'pinned': True},
+    )
+    assert meta == {'visibility': 'public', 'pinned': True}
+
+
+def test_discover_editions_skips_bad_prefixes():
+    """Prefixes without a usable latest.json (e.g. stray folders) are skipped."""
+    latest_by_name = {
+        'current/latest.json': json.dumps({'pdf_filename': 'current.pdf', 'visibility': 'public', 'pinned': True}),
+        'stray-folder/latest.json': None,  # no latest.json at all
+        'broken/latest.json': 'not-json{',
+        'no-pdf/latest.json': json.dumps({'manifest_filename': 'm.json'}),
+    }
+    mock_bucket = MagicMock()
+    mock_bucket.name = 'test-bucket'
+    page = MagicMock()
+    page.prefixes = {'current/', 'stray-folder/', 'broken/', 'no-pdf/'}
+    mock_bucket.client.list_blobs.return_value.pages = iter([page])
+
+    def blob_for(blob_name):
+        blob = MagicMock()
+        content = latest_by_name.get(blob_name)
+        if content is None:
+            blob.download_as_text.side_effect = Exception('Not Found')
+        else:
+            blob.download_as_text.return_value = content
+        return blob
+
+    mock_bucket.blob.side_effect = blob_for
+
+    editions = discover_editions(mock_bucket, {'current': {'visibility': 'public'}})
+    assert [e['name'] for e in editions] == ['current']
+    assert editions[0]['visibility'] == 'public'
+    assert editions[0]['pinned'] is True
+    assert editions[0]['latest']['pdf_filename'] == 'current.pdf'
+
+
+def test_parse_timestamp():
+    """ISO timestamps parse to aware UTC datetimes; garbage parses to None."""
+    dt = parse_timestamp('2026-06-09T12:00:00Z')
+    assert dt == datetime(2026, 6, 9, 12, 0, tzinfo=timezone.utc)
+    # Naive timestamps are assumed UTC
+    assert parse_timestamp('2026-06-09T12:00:00').tzinfo == timezone.utc
+    assert parse_timestamp(None) is None
+    assert parse_timestamp('') is None
+    assert parse_timestamp('not-a-date') is None
+
+
+def test_content_updated_at():
+    """The update signal is the newest real content change, not generated_at."""
+    latest_info = {'generated_at': '2026-08-24T09:00:00Z'}
+
+    # Newest entry with added/removed songs wins; empty entries are skipped
+    changes = {'entries': [
+        {'generated_at': '2026-08-23T09:00:00Z', 'added': [], 'removed': []},
+        {'generated_at': '2026-06-09T12:00:00Z', 'added': ['Song - Artist'], 'removed': []},
+        {'generated_at': '2026-06-02T12:00:00Z', 'added': [], 'removed': ['Old - Artist']},
+    ]}
+    assert content_updated_at(changes, latest_info) == datetime(2026, 6, 9, 12, 0, tzinfo=timezone.utc)
+
+    # No content entries at all -> fall back to latest.json generated_at
+    assert content_updated_at({'entries': []}, latest_info) == datetime(2026, 8, 24, 9, 0, tzinfo=timezone.utc)
+    assert content_updated_at(None, latest_info) == datetime(2026, 8, 24, 9, 0, tzinfo=timezone.utc)
+
+    # Nothing parseable anywhere -> None
+    assert content_updated_at(None, {'generated_at': 'garbage'}) is None
+    assert content_updated_at(None, None) is None
+
+
+def _edition(name, pinned=False, updated_dt=None):
+    return {'edition_name': name, 'pinned': pinned, 'updated_dt': updated_dt}
+
+
+def test_sort_editions():
+    """Pinned first, then most recently updated, then by name; undated last."""
+    old = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    new = datetime(2026, 8, 1, tzinfo=timezone.utc)
+    editions = [
+        _edition('b-undated'),
+        _edition('a-undated'),
+        _edition('old-book', updated_dt=old),
+        _edition('new-book', updated_dt=new),
+        _edition('pinned-old', pinned=True, updated_dt=old),
+        _edition('pinned-new', pinned=True, updated_dt=new),
+    ]
+    assert [e['edition_name'] for e in sort_editions(editions)] == [
+        'pinned-new', 'pinned-old', 'new-book', 'old-book', 'a-undated', 'b-undated',
+    ]
+
+
+def test_partition_editions():
+    """Featured = pinned or recently changed; the rest go under Show all."""
+    now = datetime(2026, 8, 24, tzinfo=timezone.utc)
+    recent = now - timedelta(days=3)
+    stale = now - timedelta(days=90)
+    editions = [
+        _edition('stale-pinned', pinned=True, updated_dt=stale),
+        _edition('recent-book', updated_dt=recent),
+        _edition('stale-book', updated_dt=stale),
+        _edition('undated-book'),
+    ]
+    featured, more = partition_editions(editions, now=now)
+    assert [e['edition_name'] for e in featured] == ['stale-pinned', 'recent-book']
+    assert [e['edition_name'] for e in more] == ['stale-book', 'undated-book']
+
+
+def test_write_redirects(tmp_path):
+    """Every edition gets a /<name>/ redirect page, unlisted ones included."""
+    editions = [
+        {'edition_name': 'current', 'title': 'Current Songbook', 'url': 'https://example.com/current.pdf', 'visibility': 'public'},
+        {'edition_name': 'secret-book', 'title': 'Secret Book', 'url': 'https://example.com/secret.pdf', 'visibility': 'unlisted'},
+    ]
+    count = write_redirects(editions, output_dir=str(tmp_path))
+    assert count == 2
+    for edition in editions:
+        html = (tmp_path / edition['edition_name'] / 'index.html').read_text()
+        assert f'<link rel="canonical" href="{edition["url"]}" />' in html
+        assert edition['url'] in html
 
 def test_get_latest_edition_info():
     """Test fetching and parsing latest.json from a mock GCS bucket."""
@@ -240,26 +482,6 @@ def test_get_latest_edition_info():
     mock_blob.download_as_text.side_effect = Exception("Not Found")
     info = get_latest_edition_info(mock_bucket, 'non-existent')
     assert info is None
-
-def test_get_edition_manifest():
-    """Test fetching and parsing an edition's manifest."""
-    mock_bucket = MagicMock()
-    mock_blob = MagicMock()
-
-    # Mock successful fetch
-    manifest_content = json.dumps({
-        "generated_at": "2024-01-01T12:00:00Z"
-    })
-    mock_blob.download_as_text.return_value = manifest_content
-    mock_bucket.blob.return_value = mock_blob
-
-    manifest = get_edition_manifest(mock_bucket, 'current', 'manifest.json')
-    assert manifest['generated_at'] == "2024-01-01T12:00:00Z"
-
-    # Mock failed fetch
-    mock_blob.download_as_text.side_effect = Exception("Not Found")
-    manifest = get_edition_manifest(mock_bucket, 'current', 'manifest.json')
-    assert manifest is None
 
 def test_get_buymeacoffee_subscriptions_pagination(requests_mock):
     """Test Buy Me a Coffee subscriptions API pagination."""
@@ -613,25 +835,6 @@ def test_verbose_output_get_latest_edition_info(capsys):
     captured = capsys.readouterr()
     assert 'Fetching latest.json from:' in captured.out
     assert 'https://storage.googleapis.com/test-bucket/current/latest.json' in captured.out
-
-
-def test_verbose_output_get_edition_manifest(capsys):
-    """Test that get_edition_manifest prints verbose output."""
-    mock_bucket = MagicMock()
-    mock_bucket.name = 'test-bucket'
-    mock_blob = MagicMock()
-
-    manifest_content = json.dumps({
-        "generated_at": "2024-01-01T12:00:00Z"
-    })
-    mock_blob.download_as_text.return_value = manifest_content
-    mock_bucket.blob.return_value = mock_blob
-
-    get_edition_manifest(mock_bucket, 'current', 'manifest.json')
-    
-    captured = capsys.readouterr()
-    assert 'Fetching manifest from:' in captured.out
-    assert 'https://storage.googleapis.com/test-bucket/current/manifest.json' in captured.out
 
 
 def test_create_session_with_retry():

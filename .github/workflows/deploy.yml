@@ -54,6 +54,9 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
+      - name: Run tests
+        run: uv run pytest -q
+
       # Persist Buy Me a Coffee data between runs so build.py hits the rate-limited
       # API at most once per TTL (see _fetch_with_cache in build.py). The run_id key
       # is always unique, so restore falls back to the most recent bmc-cache- entry
@@ -66,11 +69,9 @@ jobs:
           restore-keys: |
             bmc-cache-
 
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      # No Google Cloud auth: the songbooks bucket is publicly readable and
+      # listable, so the build runs credential-less (which also lets PR
+      # builds from forks work).
 
       - name: Generate website
         run: uv run build.py
