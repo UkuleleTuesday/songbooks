@@ -1,33 +1,34 @@
-# List of songbook editions to display on the site.
-# Each edition is a dict with 'name' and optional 'hidden: true'.
-# Hidden editions are accessible at /<name>/ but not shown on the site listing.
+# OPTIONAL per-edition overrides. The site discovers its editions from the
+# GCS bucket: each edition's latest.json carries visibility/pinned publish
+# metadata, authored in the songbook-generator repo
+# (generator/config/songbooks/<edition>.yaml) — that is the normal place to
+# publish, feature or retire an edition.
 #
-# A collapsible "What's new" panel is surfaced on each edition's card when changes
-# are present, showing the most recent songs added/removed plus a short dated
-# history of earlier changes (sourced from the edition's 'changes.json'). This is
-# enabled by default; set 'show_changelog: false' to suppress it for an edition.
+# Use this file ONLY for emergencies: pulling a book off the site (or forcing
+# one on) without waiting for a songbook-generator publish.
+# Precedence: this file > latest.json > defaults (a latest.json that predates
+# the visibility field is treated as unlisted).
 #
-# Examples:
-#   - name: current        # displayed on site
-#   - name: wip
-#     hidden: true         # accessible at /wip/ but not shown on site listing
-editions:
-  - name: ukulele-hooley-2026
-    hidden: false
-  - name: travel-songbook
-    hidden: true
-  - name: womens-2026
-    hidden: true
-  - name: wexford-2026
-    hidden: true
-  - name: april-fools-2026
-    hidden: true
-  - name: pride-2026
-    hidden: true
-  - name: current
-    hidden: false
-  - name: monopolele-2026
-    hidden: true
-  - name: complete
-  - name: ukulele-hooley-2025
-    hidden: true
+# Example:
+#   overrides:
+#     some-edition:
+#       visibility: unlisted   # 'public' or 'unlisted'
+#       pinned: true           # optional
+#
+# TEMPORARY: the entries below mirror the generator-side publish metadata
+# reconciliation (https://github.com/UkuleleTuesday/songbook-generator/pull/455)
+# so this site behaves correctly whichever lands first. Delete them once that
+# PR is merged and its sync workflow has updated the bucket's latest.json files.
+overrides:
+  monopolele-2026:
+    visibility: unlisted
+  travel-songbook:
+    visibility: unlisted
+  wexford-2026:
+    visibility: unlisted
+  pride-candidates:
+    visibility: unlisted
+  current:
+    pinned: true
+  complete:
+    pinned: true
