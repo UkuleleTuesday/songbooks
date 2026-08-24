@@ -20,7 +20,7 @@ The entire process is automated with a GitHub Actions workflow (`.github/workflo
 
 There is normally nothing to do in this repo: set `publish.visibility` / `publish.pinned` in the edition's config in the [songbook-generator](https://github.com/UkuleleTuesday/songbook-generator/) repo, and this site follows within 15 minutes of the metadata reaching the bucket.
 
-`editions.yml` here holds optional **emergency overrides** only — e.g. to pull a book off the site without waiting for a generator publish. Overrides take precedence over the bucket's metadata; the file is normally empty.
+`editions.yml` here holds optional **overrides** only — for emergencies (e.g. pulling a book off the site without waiting for a generator publish) and for editions with no generator config, whose stale `latest.json` would otherwise default to unlisted. Overrides take precedence over the bucket's metadata; the file is normally near-empty.
 
 ## A Note on Songbook Generation
 
