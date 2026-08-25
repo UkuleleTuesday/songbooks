@@ -22,3 +22,7 @@ overrides:
   # defaults to unlisted; list it explicitly here.
   april-fools-2026:
     visibility: public
+  current:
+    visibility: unlisted
+  complete:
+    visibility: unlisted
