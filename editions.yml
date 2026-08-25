@@ -1,34 +1,28 @@
-# List of songbook editions to display on the site.
-# Each edition is a dict with 'name' and optional 'hidden: true'.
-# Hidden editions are accessible at /<name>/ but not shown on the site listing.
+# OPTIONAL per-edition overrides. The site discovers its editions from the
+# GCS bucket: each edition's latest.json carries visibility/pinned publish
+# metadata, authored in the songbook-generator repo
+# (generator/config/songbooks/<edition>.yaml) — that is the normal place to
+# publish, feature or retire an edition.
 #
-# A collapsible "What's new" panel is surfaced on each edition's card when changes
-# are present, showing the most recent songs added/removed plus a short dated
-# history of earlier changes (sourced from the edition's 'changes.json'). This is
-# enabled by default; set 'show_changelog: false' to suppress it for an edition.
+# Use this file only for emergencies (pulling a book off the site, or forcing
+# one on, without waiting for a songbook-generator publish) and for editions
+# that have no generator config at all.
+# Precedence: this file > latest.json > defaults (a latest.json that predates
+# the visibility field is treated as unlisted).
 #
-# Examples:
-#   - name: current        # displayed on site
-#   - name: wip
-#     hidden: true         # accessible at /wip/ but not shown on site listing
-editions:
-  - name: ukulele-hooley-2026
-    hidden: false
-  - name: travel-songbook
-    hidden: true
-  - name: womens-2026
-    hidden: true
-  - name: wexford-2026
-    hidden: true
-  - name: april-fools-2026
-    hidden: true
-  - name: pride-2026
-    hidden: true
-  - name: current
-    hidden: true
-  - name: monopolele-2026
-    hidden: true
-  - name: complete
-    hidden: true
-  - name: ukulele-hooley-2025
-    hidden: true
+# Example:
+#   overrides:
+#     some-edition:
+#       visibility: unlisted   # 'public' or 'unlisted'
+#       pinned: true           # optional
+#
+overrides:
+  # april-fools-2026 is not managed by the generator (no edition config, and
+  # regenerating it would overwrite the joke PDF), so its stale latest.json
+  # defaults to unlisted; list it explicitly here.
+  april-fools-2026:
+    visibility: public
+  current:
+    visibility: unlisted
+  complete:
+    visibility: unlisted

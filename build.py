@@ -22,7 +22,9 @@ if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(line_buffering=True)
 
 # Configuration
-BUCKET_NAME = os.environ['GCS_BUCKET']
+# Checked in __main__ rather than raising here, so the module stays importable
+# (e.g. by the tests) without a bucket configured.
+BUCKET_NAME = os.environ.get('GCS_BUCKET')
 BASE_URL = 'https://songbooks.ukuleletuesday.ie'
 # Base URL for individual song chord sheets on the songs site. Changelog songs
 # are linked here so readers can jump straight to a sheet that was added.
@@ -43,6 +45,16 @@ DEFAULT_SUBSCRIPTIONS = []
 # Number of older changelog entries to list under the latest change in the
 # "What's new" panel (the most recent change is always shown in full).
 CHANGELOG_HISTORY_LIMIT = 10
+# Public editions whose content changed within this window are listed in the
+# main grid; older ones are tucked under the "Show all songbooks" expander.
+# Pinned editions are always in the main grid regardless of age.
+FEATURED_WINDOW_DAYS = 30
+# Editions whose content changed within this window get an "Updated" badge.
+RECENT_BADGE_DAYS = 7
+# The visibility values latest.json / overrides may carry. Anything else
+# (including a latest.json that predates the visibility field) is treated as
+# 'unlisted': the book stays reachable at its /<edition>/ URL but unlisted.
+VALID_VISIBILITIES = ('public', 'unlisted')
 
 class _LoggingRetry(Retry):
     """A urllib3 Retry that announces each wait it takes.
@@ -98,25 +110,99 @@ def create_session_with_retry(max_retries=5, backoff_factor=1):
     return session
 
 
-def get_editions_config():
-    """Reads the local editions.yml file.
+def parse_timestamp(value):
+    """Parses an ISO 8601 timestamp into an aware UTC datetime, or None."""
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+    except (ValueError, TypeError, AttributeError):
+        return None
+    return dt.astimezone(timezone.utc) if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
-    Returns a list of dicts: {'name', 'hidden', 'show_changelog'}
-    Each edition has a 'name' and optional 'hidden' and 'show_changelog' flags.
+def get_overrides(path=EDITIONS_FILE):
+    """Reads the optional per-edition overrides from editions.yml.
+
+    The edition list itself comes from the bucket (see discover_editions);
+    this file only exists to override an edition's publish metadata without
+    waiting for a songbook-generator publish — e.g. to pull a book off the
+    site in an emergency.
+
+    Returns {edition_name: {'visibility': ..., 'pinned': ...}} with only the
+    keys actually overridden. Missing file or empty overrides map -> {}.
+    Invalid values are logged and ignored.
     """
-    with open(EDITIONS_FILE, 'r') as f:
-        config = yaml.safe_load(f)
+    try:
+        with open(path, 'r') as f:
+            config = yaml.safe_load(f) or {}
+    except FileNotFoundError:
+        return {}
 
+    overrides = {}
+    for name, item in (config.get('overrides') or {}).items():
+        if not isinstance(item, dict):
+            print(f"  Ignoring invalid override for '{name}': {item!r}")
+            continue
+        entry = {}
+        if 'visibility' in item:
+            if item['visibility'] in VALID_VISIBILITIES:
+                entry['visibility'] = item['visibility']
+            else:
+                print(f"  Ignoring invalid visibility override for '{name}': {item['visibility']!r}")
+        if 'pinned' in item:
+            entry['pinned'] = bool(item['pinned'])
+        if entry:
+            overrides[name] = entry
+    return overrides
+
+def list_edition_names(bucket):
+    """Lists the top-level prefixes ("folders") of the bucket, one per edition.
+
+    Whether a prefix is a real edition is decided later by whether it has a
+    usable latest.json (see discover_editions).
+    """
+    iterator = bucket.client.list_blobs(bucket, prefix='', delimiter='/')
+    prefixes = set()
+    # prefixes only populate as the pages are consumed
+    for page in iterator.pages:
+        prefixes.update(page.prefixes)
+    return sorted(name.rstrip('/') for name in prefixes)
+
+def resolve_publish_meta(latest_info, override=None):
+    """Resolves an edition's visibility/pinned with precedence:
+    editions.yml override > latest.json > defaults.
+
+    A latest.json without a valid visibility value predates the publish
+    metadata (stale, never re-published since) and is treated as unlisted —
+    such books stay reachable at their /<edition>/ URL but are not listed.
+    """
+    latest_info = latest_info or {}
+    override = override or {}
+    visibility = latest_info.get('visibility')
+    if visibility not in VALID_VISIBILITIES:
+        visibility = 'unlisted'
+    meta = {
+        'visibility': override.get('visibility', visibility),
+        'pinned': bool(override.get('pinned', latest_info.get('pinned', False))),
+    }
+    return meta
+
+def discover_editions(bucket, overrides=None):
+    """Discovers the editions to display from the bucket contents.
+
+    An edition is any top-level prefix with a latest.json naming a PDF;
+    anything else (stray folders, half-published editions) is skipped with a
+    log line. Returns [{'name', 'latest', 'visibility', 'pinned'}].
+    """
+    overrides = overrides or {}
     editions = []
-    for item in config.get('editions', []):
-        name = item.get('name')
-        if name:
-            editions.append({
-                'name': name,
-                'hidden': item.get('hidden', False),
-                'show_changelog': item.get('show_changelog', True),
-            })
-
+    for name in list_edition_names(bucket):
+        latest_info = get_latest_edition_info(bucket, name)
+        if not latest_info or not latest_info.get('pdf_filename'):
+            print(f"  Skipping '{name}': no usable latest.json")
+            continue
+        meta = resolve_publish_meta(latest_info, overrides.get(name))
+        editions.append({'name': name, 'latest': latest_info, **meta})
     return editions
 
 def get_latest_edition_info(bucket, edition_name):
@@ -130,19 +216,6 @@ def get_latest_edition_info(bucket, edition_name):
         return json.loads(data)
     except Exception as e:
         print(f"  Could not fetch or parse {blob_name}: {e}")
-        return None
-
-def get_edition_manifest(bucket, edition_name, manifest_filename):
-    """Fetches and parses a specific edition's manifest file."""
-    blob_name = f"{edition_name}/{manifest_filename}"
-    blob = bucket.blob(blob_name)
-    try:
-        manifest_url = f"https://storage.googleapis.com/{bucket.name}/{blob_name}"
-        print(f"  Fetching manifest from: {manifest_url}")
-        data = blob.download_as_text()
-        return json.loads(data)
-    except Exception as e:
-        print(f"  Could not fetch or parse manifest {blob_name}: {e}")
         return None
 
 def get_edition_changes(bucket, edition_name):
@@ -247,6 +320,52 @@ def build_changelog(changes, history_limit=CHANGELOG_HISTORY_LIMIT):
         'latest': _changelog_entry(entries[0]),
         'earlier': [_changelog_entry(entry) for entry in entries[1:1 + history_limit]],
     }
+
+def content_updated_at(changes, latest_info):
+    """When this edition's content last actually changed.
+
+    The cron-regenerated books get a fresh latest.json (and generated_at)
+    every run even when nothing changed, so ordering by generated_at would
+    show them as perpetually new. The newest changes.json entry with songs
+    added or removed is the real content-change signal; generated_at is only
+    the fallback for editions without any such entry.
+    """
+    for entry in (changes or {}).get('entries', []):
+        if entry.get('added') or entry.get('removed'):
+            dt = parse_timestamp(entry.get('generated_at'))
+            if dt:
+                return dt
+    return parse_timestamp((latest_info or {}).get('generated_at'))
+
+def sort_editions(editions):
+    """Pinned editions first, then most recently updated, then by name."""
+    def key(edition):
+        dt = edition.get('updated_dt')
+        return (
+            not edition.get('pinned'),
+            dt is None,
+            -dt.timestamp() if dt else 0,
+            edition['edition_name'],
+        )
+    return sorted(editions, key=key)
+
+def partition_editions(editions, now=None):
+    """Splits public editions into (featured, more), each sorted.
+
+    Featured — the main grid — is every pinned edition plus any edition whose
+    content changed in the last FEATURED_WINDOW_DAYS. The rest go under the
+    "Show all songbooks" expander.
+    """
+    now = now or datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=FEATURED_WINDOW_DAYS)
+    featured, more = [], []
+    for edition in sort_editions(editions):
+        dt = edition.get('updated_dt')
+        if edition.get('pinned') or (dt and dt >= cutoff):
+            featured.append(edition)
+        else:
+            more.append(edition)
+    return featured, more
 
 def _response_error_snippet(response, limit=500):
     """Return a trimmed snippet of a response body for diagnostic logging.
@@ -558,12 +677,17 @@ def process_pdf_url(edition_name, pdf_url, preview_path):
 
     return {'title': title, 'subject': subject}
 
-def render_index(file_list, last_updated=None, base_url=None, supporter_stats=None, monthly_supporters=None):
-    """Renders the HTML index page."""
+def render_index(file_list, more_files=None, last_updated=None, base_url=None, supporter_stats=None, monthly_supporters=None):
+    """Renders the HTML index page.
+
+    `file_list` fills the main grid; `more_files` go under the collapsed
+    "Show all songbooks" section (omitted entirely when empty).
+    """
     env = Environment(loader=FileSystemLoader(TEMPLATE_DIR), autoescape=True)
     tmpl = env.get_template(TEMPLATE_FILE)
     return tmpl.render(
         files=file_list,
+        more_files=more_files or [],
         last_updated=last_updated,
         base_url=base_url,
         supporter_stats=supporter_stats,
@@ -571,6 +695,36 @@ def render_index(file_list, last_updated=None, base_url=None, supporter_stats=No
         site_title="Ukulele Tuesday Songbooks",
         site_description="Download the Ukulele Tuesday songbooks and play along with us every week."
     )
+
+def write_redirects(editions, output_dir=OUTPUT_DIR):
+    """Writes a /<edition>/ redirect page for every edition.
+
+    Unlisted editions get one too: an unlisted book is off the listing but
+    stays reachable (and shareable) at its stable URL.
+    """
+    count = 0
+    for songbook in editions:
+        redirect_dir = os.path.join(output_dir, songbook['edition_name'])
+        os.makedirs(redirect_dir, exist_ok=True)
+
+        # Create a simple HTML file with a meta refresh tag for redirection
+        redirect_html = f"""<!DOCTYPE html>
+<html>
+<head>
+<title>Redirecting to {songbook['title']}</title>
+<link rel="canonical" href="{songbook['url']}" />
+<meta http-equiv="refresh" content="0; url={songbook['url']}">
+<script>window.location.replace("{songbook['url']}");</script>
+</head>
+<body>
+<p>If you are not redirected, <a href="{songbook['url']}">click here to view the songbook</a>.</p>
+</body>
+</html>"""
+
+        with open(os.path.join(redirect_dir, 'index.html'), 'w', encoding='utf-8') as f:
+            f.write(redirect_html)
+        count += 1
+    return count
 
 def write_output(html):
     """Writes the rendered HTML to the output directory."""
@@ -587,13 +741,19 @@ def write_output(html):
         shutil.copytree(assets_src, assets_dest)
 
 if __name__ == '__main__':
-    editions_config = get_editions_config()
-    print(f"Found {len(editions_config)} editions in {EDITIONS_FILE}")
-    songbooks = []
-    hidden_editions = {}
+    if not BUCKET_NAME:
+        sys.exit("GCS_BUCKET environment variable is not set")
+
+    overrides = get_overrides()
+    if overrides:
+        print(f"Applying {len(overrides)} override(s) from {EDITIONS_FILE}: {', '.join(sorted(overrides))}")
 
     storage_client = storage.Client.create_anonymous_client()
     bucket = storage_client.bucket(BUCKET_NAME)
+
+    print(f"Discovering editions in bucket {BUCKET_NAME}...")
+    editions = discover_editions(bucket, overrides)
+    print(f"Discovered {len(editions)} editions")
 
     os.makedirs(PREVIEW_DIR, exist_ok=True)
 
@@ -605,38 +765,25 @@ if __name__ == '__main__':
     print("Fetching Buy Me a Coffee monthly supporters...")
     monthly_supporters = _fetch_with_cache('subscriptions', get_buymeacoffee_subscriptions, DEFAULT_SUBSCRIPTIONS, 'monthly supporters')
 
+    now = datetime.now(timezone.utc)
     latest_update_time = None
+    all_songbooks = []
 
-    for edition in editions_config:
+    for edition in editions:
         edition_name = edition['name']
-        is_hidden = edition['hidden']
-        show_changelog = edition['show_changelog']
-        print(f"Processing edition: {edition_name}{' (hidden)' if is_hidden else ''}")
-        latest_info = get_latest_edition_info(bucket, edition_name)
+        latest_info = edition['latest']
+        print(f"Processing edition: {edition_name} ({edition['visibility']}{', pinned' if edition['pinned'] else ''})")
 
-        if not latest_info or 'pdf_filename' not in latest_info:
-            print(f"  Skipping '{edition_name}' due to missing info.")
-            continue
+        changes = get_edition_changes(bucket, edition_name)
+        changelog = build_changelog(changes)
+        updated_dt = content_updated_at(changes, latest_info)
 
-        changelog = None
-        if show_changelog:
-            changes = get_edition_changes(bucket, edition_name)
-            changelog = build_changelog(changes)
-
-        if 'manifest_filename' in latest_info:
-            manifest = get_edition_manifest(bucket, edition_name, latest_info['manifest_filename'])
-            if manifest and 'generated_at' in manifest:
-                generated_at_str = manifest['generated_at']
-                try:
-                    # Parse the timestamp, handling potential timezone formats
-                    dt = datetime.fromisoformat(generated_at_str.replace('Z', '+00:00'))
-                    # Ensure timezone is set for comparison
-                    dt_utc = dt.astimezone(timezone.utc) if dt.tzinfo is None else dt
-
-                    if latest_update_time is None or dt_utc > latest_update_time:
-                        latest_update_time = dt_utc
-                except ValueError:
-                    print(f"  Could not parse timestamp: {generated_at_str}")
+        # The footer's site-wide "Last updated" reflects listed books only —
+        # an unlisted edition shouldn't bump a timestamp nobody can see.
+        if edition['visibility'] == 'public':
+            generated_dt = parse_timestamp(latest_info.get('generated_at'))
+            if generated_dt and (latest_update_time is None or generated_dt > latest_update_time):
+                latest_update_time = generated_dt
 
         pdf_filename = latest_info['pdf_filename']
         pdf_url = f"https://storage.googleapis.com/{BUCKET_NAME}/{edition_name}/{pdf_filename}"
@@ -654,47 +801,29 @@ if __name__ == '__main__':
             'url': pdf_url,
             'preview_image': f'previews/{preview_filename}',
             'filename': pdf_filename,
+            'visibility': edition['visibility'],
+            'pinned': edition['pinned'],
+            'updated_dt': updated_dt,
+            'updated_at': updated_dt.isoformat() if updated_dt else None,
+            'updated_display': format_changelog_date(updated_dt.isoformat()) if updated_dt else '',
+            'recently_updated': bool(updated_dt and now - updated_dt <= timedelta(days=RECENT_BADGE_DAYS)),
         }
 
         if changelog:
             edition_data['changelog'] = changelog
 
-        # Separate hidden editions from visible ones
-        if is_hidden:
-            hidden_editions[edition_name] = edition_data
-        else:
-            songbooks.append(edition_data)
+        all_songbooks.append(edition_data)
+
+    public_songbooks = [s for s in all_songbooks if s['visibility'] == 'public']
+    featured, more = partition_editions(public_songbooks, now=now)
 
     last_updated_iso = latest_update_time.isoformat() if latest_update_time else None
-    html = render_index(songbooks, last_updated=last_updated_iso, base_url=BASE_URL, supporter_stats=supporter_stats, monthly_supporters=monthly_supporters)
+    html = render_index(featured, more_files=more, last_updated=last_updated_iso, base_url=BASE_URL, supporter_stats=supporter_stats, monthly_supporters=monthly_supporters)
     write_output(html)
-    print(f"Generated {len(songbooks)} visible songbooks → {OUTPUT_DIR}/index.html")
+    print(f"Generated {len(featured)} featured + {len(more)} more songbooks → {OUTPUT_DIR}/index.html")
 
-    # Generate redirects for each edition (both visible and hidden)
+    # Generate redirects for each edition (both public and unlisted)
     print("Generating redirects for each edition...")
-    redirect_count = 0
-    all_songbooks = songbooks + list(hidden_editions.values())
-    for songbook in all_songbooks:
-        redirect_dir = os.path.join(OUTPUT_DIR, songbook['edition_name'])
-        os.makedirs(redirect_dir, exist_ok=True)
-
-        # Create a simple HTML file with a meta refresh tag for redirection
-        redirect_html = f"""<!DOCTYPE html>
-<html>
-<head>
-<title>Redirecting to {songbook['title']}</title>
-<link rel="canonical" href="{songbook['url']}" />
-<meta http-equiv="refresh" content="0; url={songbook['url']}">
-<script>window.location.replace("{songbook['url']}");</script>
-</head>
-<body>
-<p>If you are not redirected, <a href="{songbook['url']}">click here to view the songbook</a>.</p>
-</body>
-</html>"""
-        
-        with open(os.path.join(redirect_dir, 'index.html'), 'w', encoding='utf-8') as f:
-            f.write(redirect_html)
-        redirect_count += 1
-    
+    redirect_count = write_redirects(all_songbooks)
     if redirect_count > 0:
         print(f"Generated {redirect_count} redirects.")

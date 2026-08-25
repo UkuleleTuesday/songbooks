@@ -63,8 +63,7 @@
         {% endif %}
       </div>
       {% endmacro %}
-      <ul class="songbook-list">
-      {% for file in files %}
+      {% macro songbook_card(file) %}
         <li class="songbook-item">
           {% set display_title = file.title.replace('Ukulele Tuesday - ', '') %}
           <a href="{{ file.url }}" target="_blank" rel="noopener noreferrer"
@@ -75,6 +74,7 @@
              {% if file.subject %}data-songbook-subject="{{ file.subject | escape }}"{% endif %}>
             <div class="preview-container">
               <img src="{{ file.preview_image }}" alt="Preview of {{ file.title }}">
+              {% if file.recently_updated %}<span class="card-badge">Updated</span>{% endif %}
               <div class="download-icon">
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
               </div>
@@ -83,6 +83,9 @@
               <div class="title" title="{{ display_title }}">{{ display_title }}</div>
               {% if file.subject %}
               <div class="subtitle" title="{{ file.subject }}">{{ file.subject }}</div>
+              {% endif %}
+              {% if file.updated_display %}
+              <div class="updated-line">Updated <time datetime="{{ file.updated_at }}">{{ file.updated_display }}</time></div>
               {% endif %}
             </div>
           </a>
@@ -101,8 +104,22 @@
           </details>
           {% endif %}
         </li>
+      {% endmacro %}
+      <ul class="songbook-list">
+      {% for file in files %}
+        {{ songbook_card(file) }}
       {% endfor %}
       </ul>
+      {% if more_files %}
+      <details class="all-songbooks">
+        <summary>Show all songbooks ({{ more_files|length }} more)</summary>
+        <ul class="songbook-list">
+        {% for file in more_files %}
+          {{ songbook_card(file) }}
+        {% endfor %}
+        </ul>
+      </details>
+      {% endif %}
     </main>
     
     <div class="support-cta">
@@ -181,6 +198,33 @@
           }
           mixpanel.track('Songbook Download', properties);
         });
+      });
+    });
+  </script>
+  <script>
+    // Progressive enhancement: swap each card's absolute "Updated 9 Jun 2026"
+    // date for a relative one ("Updated 3 days ago") in the viewer's locale.
+    // Without JS the absolute date stays.
+    document.addEventListener('DOMContentLoaded', function() {
+      let rtf;
+      try {
+        rtf = new Intl.RelativeTimeFormat(navigator.language, { numeric: 'auto' });
+      } catch (e) {
+        return;
+      }
+      document.querySelectorAll('.updated-line time[datetime]').forEach(function(el) {
+        const then = new Date(el.getAttribute('datetime'));
+        if (isNaN(then)) return;
+        const days = Math.round((then.getTime() - Date.now()) / 86400000);
+        let text;
+        if (days > -30) {
+          text = rtf.format(Math.min(days, 0), 'day');
+        } else if (days > -365) {
+          text = rtf.format(Math.round(days / 30), 'month');
+        } else {
+          text = rtf.format(Math.round(days / 365), 'year');
+        }
+        el.textContent = text;
       });
     });
   </script>
