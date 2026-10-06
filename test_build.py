@@ -213,6 +213,7 @@ def test_render_index(sample_files, sample_supporter_stats):
     assert '€500' in html
     assert '25 supporters' in html
     assert '<!DOCTYPE html' in html
+    assert "What's new" not in html
     
     # Check that email link is replaced with contact form link
     assert 'mailto:contact@ukuleletuesday.ie' not in html
@@ -270,7 +271,7 @@ def test_render_index_updated_line_and_badge(sample_supporter_stats):
             'recently_updated': False,
         },
     ]
-    html = render_index(files, supporter_stats=sample_supporter_stats)
+    html = render_index(files, supporter_stats=sample_supporter_stats, show_changelog=True)
     assert '<time datetime="2026-08-22T12:00:00+00:00">22 Aug 2026</time>' in html
     assert '<time datetime="2026-06-09T12:00:00+00:00">9 Jun 2026</time>' in html
     # Exactly one badge: the recently updated book's

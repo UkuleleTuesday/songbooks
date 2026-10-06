@@ -45,6 +45,8 @@ DEFAULT_SUBSCRIPTIONS = []
 # Number of older changelog entries to list under the latest change in the
 # "What's new" panel (the most recent change is always shown in full).
 CHANGELOG_HISTORY_LIMIT = 10
+# Temporarily hide the changelog while the upstream changes list is broken.
+SHOW_CHANGELOG = False
 # Public editions whose content changed within this window are listed in the
 # main grid; older ones are tucked under the "Show all songbooks" expander.
 # Pinned editions are always in the main grid regardless of age.
@@ -677,7 +679,7 @@ def process_pdf_url(edition_name, pdf_url, preview_path):
 
     return {'title': title, 'subject': subject}
 
-def render_index(file_list, more_files=None, last_updated=None, base_url=None, supporter_stats=None, monthly_supporters=None):
+def render_index(file_list, more_files=None, last_updated=None, base_url=None, supporter_stats=None, monthly_supporters=None, show_changelog=SHOW_CHANGELOG):
     """Renders the HTML index page.
 
     `file_list` fills the main grid; `more_files` go under the collapsed
@@ -692,6 +694,7 @@ def render_index(file_list, more_files=None, last_updated=None, base_url=None, s
         base_url=base_url,
         supporter_stats=supporter_stats,
         monthly_supporters=monthly_supporters or [],
+        show_changelog=show_changelog,
         site_title="Ukulele Tuesday Songbooks",
         site_description="Download the Ukulele Tuesday songbooks and play along with us every week."
     )
