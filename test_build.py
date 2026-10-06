@@ -271,7 +271,7 @@ def test_render_index_updated_line_and_badge(sample_supporter_stats):
             'recently_updated': False,
         },
     ]
-    html = render_index(files, supporter_stats=sample_supporter_stats, show_changelog=True)
+    html = render_index(files, supporter_stats=sample_supporter_stats)
     assert '<time datetime="2026-08-22T12:00:00+00:00">22 Aug 2026</time>' in html
     assert '<time datetime="2026-06-09T12:00:00+00:00">9 Jun 2026</time>' in html
     # Exactly one badge: the recently updated book's
@@ -778,7 +778,11 @@ def test_render_index_with_changelog(sample_supporter_stats):
         },
     }]
 
-    html = render_index(files, supporter_stats=sample_supporter_stats)
+    hidden_html = render_index(files, supporter_stats=sample_supporter_stats)
+    assert "What's new" not in hidden_html
+    assert 'Brand New Song - The Band' not in hidden_html
+
+    html = render_index(files, supporter_stats=sample_supporter_stats, show_changelog=True)
 
     assert "What's new" in html
     # The top summary no longer shows the (x added, x removed) counts.
