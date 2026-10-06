@@ -213,6 +213,7 @@ def test_render_index(sample_files, sample_supporter_stats):
     assert '€500' in html
     assert '25 supporters' in html
     assert '<!DOCTYPE html' in html
+    assert "What's new" not in html
     
     # Check that email link is replaced with contact form link
     assert 'mailto:contact@ukuleletuesday.ie' not in html
@@ -777,7 +778,11 @@ def test_render_index_with_changelog(sample_supporter_stats):
         },
     }]
 
-    html = render_index(files, supporter_stats=sample_supporter_stats)
+    hidden_html = render_index(files, supporter_stats=sample_supporter_stats)
+    assert "What's new" not in hidden_html
+    assert 'Brand New Song - The Band' not in hidden_html
+
+    html = render_index(files, supporter_stats=sample_supporter_stats, show_changelog=True)
 
     assert "What's new" in html
     # The top summary no longer shows the (x added, x removed) counts.
