@@ -679,6 +679,31 @@ def process_pdf_url(edition_name, pdf_url, preview_path):
 
     return {'title': title, 'subject': subject}
 
+def get_book_details(edition_name, latest_info):
+    """Returns the PDF URL, title, subject and cover image for an edition.
+
+    songbook-generator publishes a rendered cover and the book's title/subject
+    in latest.json, so the PDF itself never needs downloading. Books published
+    before that have no cover_filename; for those, fall back to downloading
+    the PDF and rendering the cover locally.
+    """
+    edition_url = f"https://storage.googleapis.com/{BUCKET_NAME}/{edition_name}"
+    pdf_url = f"{edition_url}/{latest_info['pdf_filename']}"
+    print(f"  Using PDF URL: {pdf_url}")
+
+    cover_filename = latest_info.get('cover_filename')
+    if cover_filename:
+        return {
+            'url': pdf_url,
+            'title': latest_info.get('title') or edition_name,
+            'subject': latest_info.get('subject') or '',
+            'preview_image': f"{edition_url}/{cover_filename}",
+        }
+
+    preview_filename = f"{edition_name}.png"
+    metadata = process_pdf_url(edition_name, pdf_url, os.path.join(PREVIEW_DIR, preview_filename))
+    return {'url': pdf_url, **metadata, 'preview_image': f'previews/{preview_filename}'}
+
 def render_index(file_list, more_files=None, last_updated=None, base_url=None, supporter_stats=None, monthly_supporters=None, show_changelog=SHOW_CHANGELOG):
     """Renders the HTML index page.
 
@@ -788,22 +813,10 @@ if __name__ == '__main__':
             if generated_dt and (latest_update_time is None or generated_dt > latest_update_time):
                 latest_update_time = generated_dt
 
-        pdf_filename = latest_info['pdf_filename']
-        pdf_url = f"https://storage.googleapis.com/{BUCKET_NAME}/{edition_name}/{pdf_filename}"
-        print(f"  Using PDF URL: {pdf_url}")
-
-        preview_filename = f"{edition_name}.png"
-        preview_path_abs = os.path.join(PREVIEW_DIR, preview_filename)
-
-        metadata = process_pdf_url(edition_name, pdf_url, preview_path_abs)
-
         edition_data = {
             'edition_name': edition_name,
-            'title': metadata['title'],
-            'subject': metadata['subject'],
-            'url': pdf_url,
-            'preview_image': f'previews/{preview_filename}',
-            'filename': pdf_filename,
+            **get_book_details(edition_name, latest_info),
+            'filename': latest_info['pdf_filename'],
             'visibility': edition['visibility'],
             'pinned': edition['pinned'],
             'updated_dt': updated_dt,
