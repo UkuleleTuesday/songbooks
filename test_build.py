@@ -31,7 +31,9 @@ from build import (
     build_changelog,
     format_changelog_date,
     song_sheet_url,
+    get_book_details,
 )
+import build
 
 
 @pytest.fixture
@@ -483,6 +485,55 @@ def test_get_latest_edition_info():
     mock_blob.download_as_text.side_effect = Exception("Not Found")
     info = get_latest_edition_info(mock_bucket, 'non-existent')
     assert info is None
+
+def test_get_book_details_uses_published_cover(monkeypatch):
+    """A published cover means no PDF download at all."""
+    monkeypatch.setattr(build, 'BUCKET_NAME', 'bucket')
+    process = MagicMock()
+    monkeypatch.setattr(build, 'process_pdf_url', process)
+
+    details = get_book_details('current', {
+        'pdf_filename': 'book.pdf',
+        'cover_filename': 'book.cover.png',
+        'title': 'Ukulele Tuesday Songbook',
+        'subject': 'Current edition',
+    })
+
+    process.assert_not_called()
+    assert details == {
+        'url': 'https://storage.googleapis.com/bucket/current/book.pdf',
+        'title': 'Ukulele Tuesday Songbook',
+        'subject': 'Current edition',
+        'preview_image': 'https://storage.googleapis.com/bucket/current/book.cover.png',
+    }
+
+
+def test_get_book_details_falls_back_to_rendering_pdf(monkeypatch):
+    """Books published before covers existed are still rendered from the PDF."""
+    monkeypatch.setattr(build, 'BUCKET_NAME', 'bucket')
+    process = MagicMock(return_value={'title': 'Old Book', 'subject': 'Old'})
+    monkeypatch.setattr(build, 'process_pdf_url', process)
+
+    details = get_book_details('old', {'pdf_filename': 'old.pdf'})
+
+    process.assert_called_once_with(
+        'old',
+        'https://storage.googleapis.com/bucket/old/old.pdf',
+        os.path.join(build.PREVIEW_DIR, 'old.png'),
+    )
+    assert details['title'] == 'Old Book'
+    assert details['preview_image'] == 'previews/old.png'
+
+
+def test_get_book_details_title_defaults_to_edition_name(monkeypatch):
+    monkeypatch.setattr(build, 'BUCKET_NAME', 'bucket')
+    details = get_book_details('current', {
+        'pdf_filename': 'book.pdf',
+        'cover_filename': 'book.cover.png',
+    })
+    assert details['title'] == 'current'
+    assert details['subject'] == ''
+
 
 def test_get_buymeacoffee_subscriptions_pagination(requests_mock):
     """Test Buy Me a Coffee subscriptions API pagination."""
