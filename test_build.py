@@ -505,6 +505,7 @@ def test_get_book_details_uses_published_cover(monkeypatch):
         'title': 'Ukulele Tuesday Songbook',
         'subject': 'Current edition',
         'preview_image': 'https://storage.googleapis.com/bucket/current/book.cover.png',
+        'cover_source': 'published',
     }
 
 
@@ -523,6 +524,7 @@ def test_get_book_details_falls_back_to_rendering_pdf(monkeypatch):
     )
     assert details['title'] == 'Old Book'
     assert details['preview_image'] == 'previews/old.png'
+    assert details['cover_source'] == 'rendered'
 
 
 def test_get_book_details_title_defaults_to_edition_name(monkeypatch):

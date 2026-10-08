@@ -693,16 +693,19 @@ def get_book_details(edition_name, latest_info):
 
     cover_filename = latest_info.get('cover_filename')
     if cover_filename:
+        print(f"  Using published cover: {edition_url}/{cover_filename}")
         return {
             'url': pdf_url,
             'title': latest_info.get('title') or edition_name,
             'subject': latest_info.get('subject') or '',
             'preview_image': f"{edition_url}/{cover_filename}",
+            'cover_source': 'published',
         }
 
+    print("  No published cover in latest.json; downloading the PDF to render one")
     preview_filename = f"{edition_name}.png"
     metadata = process_pdf_url(edition_name, pdf_url, os.path.join(PREVIEW_DIR, preview_filename))
-    return {'url': pdf_url, **metadata, 'preview_image': f'previews/{preview_filename}'}
+    return {'url': pdf_url, **metadata, 'preview_image': f'previews/{preview_filename}', 'cover_source': 'rendered'}
 
 def render_index(file_list, more_files=None, last_updated=None, base_url=None, supporter_stats=None, monthly_supporters=None, show_changelog=SHOW_CHANGELOG):
     """Renders the HTML index page.
@@ -829,6 +832,10 @@ if __name__ == '__main__':
             edition_data['changelog'] = changelog
 
         all_songbooks.append(edition_data)
+
+    rendered = sorted(s['edition_name'] for s in all_songbooks if s['cover_source'] == 'rendered')
+    print(f"Covers: {len(all_songbooks) - len(rendered)} published, {len(rendered)} rendered from PDF"
+          + (f" ({', '.join(rendered)})" if rendered else ""))
 
     public_songbooks = [s for s in all_songbooks if s['visibility'] == 'public']
     featured, more = partition_editions(public_songbooks, now=now)
