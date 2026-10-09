@@ -1,5 +1,5 @@
 # OPTIONAL per-edition overrides. The site discovers its editions from the
-# GCS bucket: each edition's latest.json carries visibility/pinned publish
+# GCS bucket: each edition's latest.json carries visibility/pinned/featured_until publish
 # metadata, authored in the songbook-generator repo
 # (generator/config/songbooks/<edition>.yaml) — that is the normal place to
 # publish, feature or retire an edition.
@@ -15,6 +15,7 @@
 #     some-edition:
 #       visibility: unlisted   # 'public' or 'unlisted'
 #       pinned: true           # optional
+#       featured_until: 2026-10-27  # optional, listed first through this day
 #
 overrides:
   # april-fools-2026 is not managed by the generator (no edition config, and

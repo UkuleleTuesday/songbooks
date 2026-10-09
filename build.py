@@ -7,7 +7,8 @@ import json
 import time
 import unicodedata
 import yaml
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 import fitz  # PyMuPDF
 import requests
 from requests.adapters import HTTPAdapter
@@ -49,8 +50,12 @@ CHANGELOG_HISTORY_LIMIT = 10
 SHOW_CHANGELOG = False
 # Public editions whose content changed within this window are listed in the
 # main grid; older ones are tucked under the "Show all songbooks" expander.
-# Pinned editions are always in the main grid regardless of age.
+# Pinned editions, and editions within their featured_until date, are always
+# in the main grid regardless of age.
 FEATURED_WINDOW_DAYS = 30
+# featured_until is a calendar day in the sessions' timezone: an edition
+# featured until the event day stays on top until midnight Dublin time.
+SITE_TZ = ZoneInfo('Europe/Dublin')
 # Editions whose content changed within this window get an "Updated" badge.
 RECENT_BADGE_DAYS = 7
 # The visibility values latest.json / overrides may carry. Anything else
@@ -122,6 +127,19 @@ def parse_timestamp(value):
         return None
     return dt.astimezone(timezone.utc) if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
+def parse_featured_until(value):
+    """Parses a featured_until value (a YAML date or ISO 'YYYY-MM-DD' string)
+    into a date, or None. Invalid values are logged and ignored."""
+    if not value:
+        return None
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    try:
+        return date.fromisoformat(value)
+    except (ValueError, TypeError):
+        print(f"  Ignoring invalid featured_until: {value!r}")
+        return None
+
 def get_overrides(path=EDITIONS_FILE):
     """Reads the optional per-edition overrides from editions.yml.
 
@@ -130,7 +148,7 @@ def get_overrides(path=EDITIONS_FILE):
     waiting for a songbook-generator publish — e.g. to pull a book off the
     site in an emergency.
 
-    Returns {edition_name: {'visibility': ..., 'pinned': ...}} with only the
+    Returns {edition_name: {'visibility': ..., 'pinned': ..., 'featured_until': ...}} with only the
     keys actually overridden. Missing file or empty overrides map -> {}.
     Invalid values are logged and ignored.
     """
@@ -153,6 +171,10 @@ def get_overrides(path=EDITIONS_FILE):
                 print(f"  Ignoring invalid visibility override for '{name}': {item['visibility']!r}")
         if 'pinned' in item:
             entry['pinned'] = bool(item['pinned'])
+        if 'featured_until' in item:
+            featured_until = parse_featured_until(item['featured_until'])
+            if featured_until:
+                entry['featured_until'] = featured_until
         if entry:
             overrides[name] = entry
     return overrides
@@ -171,7 +193,7 @@ def list_edition_names(bucket):
     return sorted(name.rstrip('/') for name in prefixes)
 
 def resolve_publish_meta(latest_info, override=None):
-    """Resolves an edition's visibility/pinned with precedence:
+    """Resolves an edition's visibility/pinned/featured_until with precedence:
     editions.yml override > latest.json > defaults.
 
     A latest.json without a valid visibility value predates the publish
@@ -186,6 +208,7 @@ def resolve_publish_meta(latest_info, override=None):
     meta = {
         'visibility': override.get('visibility', visibility),
         'pinned': bool(override.get('pinned', latest_info.get('pinned', False))),
+        'featured_until': override.get('featured_until') or parse_featured_until(latest_info.get('featured_until')),
     }
     return meta
 
@@ -194,7 +217,7 @@ def discover_editions(bucket, overrides=None):
 
     An edition is any top-level prefix with a latest.json naming a PDF;
     anything else (stray folders, half-published editions) is skipped with a
-    log line. Returns [{'name', 'latest', 'visibility', 'pinned'}].
+    log line. Returns [{'name', 'latest', 'visibility', 'pinned', 'featured_until'}].
     """
     overrides = overrides or {}
     editions = []
@@ -339,31 +362,47 @@ def content_updated_at(changes, latest_info):
                 return dt
     return parse_timestamp((latest_info or {}).get('generated_at'))
 
-def sort_editions(editions):
-    """Pinned editions first, then most recently updated, then by name."""
+def site_today(now=None):
+    """Today's date in SITE_TZ, the calendar featured_until is compared on."""
+    return (now or datetime.now(timezone.utc)).astimezone(SITE_TZ).date()
+
+def is_featured_now(edition, today):
+    """True while today is on or before the edition's featured_until date."""
+    featured_until = edition.get('featured_until')
+    return bool(featured_until and today <= featured_until)
+
+def sort_editions(editions, today=None):
+    """Orders editions in three tiers:
+
+    1. featured (within featured_until), soonest-ending first, then by name;
+    2. pinned, by name — a stable order that recency can't reshuffle;
+    3. everything else, most recently updated first, undated last, then name.
+    """
+    today = today or site_today()
     def key(edition):
+        name = edition['edition_name']
+        if is_featured_now(edition, today):
+            return (0, edition['featured_until'].toordinal(), name)
+        if edition.get('pinned'):
+            return (1, 0, name)
         dt = edition.get('updated_dt')
-        return (
-            not edition.get('pinned'),
-            dt is None,
-            -dt.timestamp() if dt else 0,
-            edition['edition_name'],
-        )
+        return (2, -dt.timestamp() if dt else float('inf'), name)
     return sorted(editions, key=key)
 
 def partition_editions(editions, now=None):
     """Splits public editions into (featured, more), each sorted.
 
-    Featured — the main grid — is every pinned edition plus any edition whose
-    content changed in the last FEATURED_WINDOW_DAYS. The rest go under the
-    "Show all songbooks" expander.
+    Featured — the main grid — is every pinned edition, every edition within
+    its featured_until date, plus any edition whose content changed in the last
+    FEATURED_WINDOW_DAYS. The rest go under the "Show all songbooks" expander.
     """
     now = now or datetime.now(timezone.utc)
+    today = site_today(now)
     cutoff = now - timedelta(days=FEATURED_WINDOW_DAYS)
     featured, more = [], []
-    for edition in sort_editions(editions):
+    for edition in sort_editions(editions, today):
         dt = edition.get('updated_dt')
-        if edition.get('pinned') or (dt and dt >= cutoff):
+        if edition.get('pinned') or is_featured_now(edition, today) or (dt and dt >= cutoff):
             featured.append(edition)
         else:
             more.append(edition)
@@ -803,7 +842,9 @@ if __name__ == '__main__':
     for edition in editions:
         edition_name = edition['name']
         latest_info = edition['latest']
-        print(f"Processing edition: {edition_name} ({edition['visibility']}{', pinned' if edition['pinned'] else ''})")
+        print(f"Processing edition: {edition_name} ({edition['visibility']}"
+              f"{', pinned' if edition['pinned'] else ''}"
+              f"{', featured until ' + edition['featured_until'].isoformat() if edition['featured_until'] else ''})")
 
         changes = get_edition_changes(bucket, edition_name)
         changelog = build_changelog(changes)
@@ -822,6 +863,7 @@ if __name__ == '__main__':
             'filename': latest_info['pdf_filename'],
             'visibility': edition['visibility'],
             'pinned': edition['pinned'],
+            'featured_until': edition['featured_until'],
             'updated_dt': updated_dt,
             'updated_at': updated_dt.isoformat() if updated_dt else None,
             'updated_display': format_changelog_date(updated_dt.isoformat()) if updated_dt else '',

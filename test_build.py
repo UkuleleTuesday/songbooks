@@ -10,7 +10,7 @@ import yaml
 from unittest.mock import MagicMock
 
 # Import functions from build.py for testing
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from build import (
     get_buymeacoffee_stats,
@@ -24,6 +24,7 @@ from build import (
     content_updated_at,
     sort_editions,
     partition_editions,
+    parse_featured_until,
     parse_timestamp,
     write_redirects,
     create_session_with_retry,
@@ -302,6 +303,10 @@ def test_get_overrides(tmp_path):
         '  promoted-book:\n'
         '    visibility: public\n'
         '    pinned: true\n'
+        '  special-book:\n'
+        '    featured_until: 2026-10-27\n'
+        '  bad-featured-until:\n'
+        '    featured_until: next tuesday\n'
         '  bad-visibility:\n'
         '    visibility: secret\n'
         '  not-a-dict: unlisted\n'
@@ -309,6 +314,7 @@ def test_get_overrides(tmp_path):
     assert get_overrides(str(path)) == {
         'pulled-book': {'visibility': 'unlisted'},
         'promoted-book': {'visibility': 'public', 'pinned': True},
+        'special-book': {'featured_until': date(2026, 10, 27)},
     }
 
 
@@ -328,12 +334,13 @@ def test_list_edition_names():
 def test_resolve_publish_meta():
     """Precedence: editions.yml override > latest.json > defaults."""
     # latest.json values are used as-is
-    meta = resolve_publish_meta({'visibility': 'public', 'pinned': True})
-    assert meta == {'visibility': 'public', 'pinned': True}
+    meta = resolve_publish_meta({'visibility': 'public', 'pinned': True, 'featured_until': '2026-10-27'})
+    assert meta == {'visibility': 'public', 'pinned': True, 'featured_until': date(2026, 10, 27)}
 
     # A latest.json without publish metadata (predates the feature) is unlisted
-    assert resolve_publish_meta({'pdf_filename': 'x.pdf'}) == {'visibility': 'unlisted', 'pinned': False}
-    assert resolve_publish_meta(None) == {'visibility': 'unlisted', 'pinned': False}
+    unlisted = {'visibility': 'unlisted', 'pinned': False, 'featured_until': None}
+    assert resolve_publish_meta({'pdf_filename': 'x.pdf'}) == unlisted
+    assert resolve_publish_meta(None) == unlisted
 
     # An unknown visibility value is also treated as unlisted
     assert resolve_publish_meta({'visibility': 'secret'})['visibility'] == 'unlisted'
@@ -343,18 +350,20 @@ def test_resolve_publish_meta():
         {'visibility': 'public', 'pinned': False},
         {'visibility': 'unlisted'},
     )
-    assert meta == {'visibility': 'unlisted', 'pinned': False}
+    assert meta == unlisted
     meta = resolve_publish_meta(
-        {'visibility': 'unlisted', 'pinned': False},
-        {'visibility': 'public', 'pinned': True},
+        {'visibility': 'unlisted', 'pinned': False, 'featured_until': None},
+        {'visibility': 'public', 'pinned': True, 'featured_until': date(2026, 10, 27)},
     )
-    assert meta == {'visibility': 'public', 'pinned': True}
+    assert meta == {'visibility': 'public', 'pinned': True, 'featured_until': date(2026, 10, 27)}
 
 
 def test_discover_editions_skips_bad_prefixes():
     """Prefixes without a usable latest.json (e.g. stray folders) are skipped."""
     latest_by_name = {
-        'current/latest.json': json.dumps({'pdf_filename': 'current.pdf', 'visibility': 'public', 'pinned': True}),
+        'current/latest.json': json.dumps({
+            'pdf_filename': 'current.pdf', 'visibility': 'public', 'pinned': True, 'featured_until': '2026-10-27',
+        }),
         'stray-folder/latest.json': None,  # no latest.json at all
         'broken/latest.json': 'not-json{',
         'no-pdf/latest.json': json.dumps({'manifest_filename': 'm.json'}),
@@ -380,6 +389,7 @@ def test_discover_editions_skips_bad_prefixes():
     assert [e['name'] for e in editions] == ['current']
     assert editions[0]['visibility'] == 'public'
     assert editions[0]['pinned'] is True
+    assert editions[0]['featured_until'] == date(2026, 10, 27)
     assert editions[0]['latest']['pdf_filename'] == 'current.pdf'
 
 
@@ -415,12 +425,22 @@ def test_content_updated_at():
     assert content_updated_at(None, None) is None
 
 
-def _edition(name, pinned=False, updated_dt=None):
-    return {'edition_name': name, 'pinned': pinned, 'updated_dt': updated_dt}
+def _edition(name, pinned=False, updated_dt=None, featured_until=None):
+    return {'edition_name': name, 'pinned': pinned, 'updated_dt': updated_dt, 'featured_until': featured_until}
+
+
+def test_parse_featured_until():
+    """YAML dates and ISO strings parse; anything else is None."""
+    assert parse_featured_until(date(2026, 10, 27)) == date(2026, 10, 27)
+    assert parse_featured_until('2026-10-27') == date(2026, 10, 27)
+    assert parse_featured_until(None) is None
+    assert parse_featured_until('') is None
+    assert parse_featured_until('next tuesday') is None
+    assert parse_featured_until(20261027) is None
 
 
 def test_sort_editions():
-    """Pinned first, then most recently updated, then by name; undated last."""
+    """Pinned first (by name), then most recently updated, then by name; undated last."""
     old = datetime(2026, 1, 1, tzinfo=timezone.utc)
     new = datetime(2026, 8, 1, tzinfo=timezone.utc)
     editions = [
@@ -433,6 +453,38 @@ def test_sort_editions():
     ]
     assert [e['edition_name'] for e in sort_editions(editions)] == [
         'pinned-new', 'pinned-old', 'new-book', 'old-book', 'a-undated', 'b-undated',
+    ]
+
+
+def test_sort_editions_pinned_by_name_not_recency():
+    """Pinned editions keep a stable name order however recently they changed."""
+    old = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    new = datetime(2026, 8, 1, tzinfo=timezone.utc)
+    editions = [
+        _edition('b-pinned', pinned=True, updated_dt=new),
+        _edition('a-pinned', pinned=True, updated_dt=old),
+    ]
+    assert [e['edition_name'] for e in sort_editions(editions)] == ['a-pinned', 'b-pinned']
+
+
+def test_sort_editions_featured_above_pinned():
+    """An edition within its featured_until date sorts above pinned ones,
+    even when the pinned edition changed more recently (Oktoberfest 2026)."""
+    today = date(2026, 10, 6)
+    editions = [
+        _edition('current', pinned=True, updated_dt=datetime(2026, 10, 6, 12, 0, 11, tzinfo=timezone.utc)),
+        _edition('oktoberfest-2026', updated_dt=datetime(2026, 10, 6, 12, 0, 0, tzinfo=timezone.utc),
+                 featured_until=date(2026, 10, 6)),
+        _edition('halloween-2026', featured_until=date(2026, 10, 27)),
+        _edition('a-later-special', featured_until=date(2026, 10, 27)),
+    ]
+    assert [e['edition_name'] for e in sort_editions(editions, today)] == [
+        'oktoberfest-2026', 'a-later-special', 'halloween-2026', 'current',
+    ]
+
+    # The day after, it falls back into the normal ordering on its own.
+    assert [e['edition_name'] for e in sort_editions(editions, date(2026, 10, 7))] == [
+        'a-later-special', 'halloween-2026', 'current', 'oktoberfest-2026',
     ]
 
 
@@ -450,6 +502,24 @@ def test_partition_editions():
     featured, more = partition_editions(editions, now=now)
     assert [e['edition_name'] for e in featured] == ['stale-pinned', 'recent-book']
     assert [e['edition_name'] for e in more] == ['stale-book', 'undated-book']
+
+
+def test_partition_editions_featured_until_dublin_day():
+    """featured_until is inclusive of the whole day in Dublin time, and keeps
+    a stale edition in the main grid while it lasts."""
+    stale = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    editions = [
+        _edition('current', pinned=True, updated_dt=stale),
+        _edition('special', updated_dt=stale, featured_until=date(2026, 7, 1)),
+    ]
+    # 23:30 on 1 July in Dublin (IST, UTC+1): still featured, and first.
+    featured, more = partition_editions(editions, now=datetime(2026, 7, 1, 22, 30, tzinfo=timezone.utc))
+    assert [e['edition_name'] for e in featured] == ['special', 'current']
+    assert more == []
+    # 00:30 on 2 July in Dublin, though still 1 July in UTC: back to normal.
+    featured, more = partition_editions(editions, now=datetime(2026, 7, 1, 23, 30, tzinfo=timezone.utc))
+    assert [e['edition_name'] for e in featured] == ['current']
+    assert [e['edition_name'] for e in more] == ['special']
 
 
 def test_write_redirects(tmp_path):
